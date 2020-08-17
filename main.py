@@ -1,17 +1,21 @@
+# -*- coding: utf-8 -*-
 import os
 
 import torch
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
+from datasets import BaseDataset, TrainingDataset
+
 
 def main(results_path: str, network_config: dict, eval_settings: dict, classes: list, learning_rate: int = 1e-3,
          weight_decay: float = 1e-4, n_updates: int = int(1e5), device: torch.device = torch.device("cuda:0")):
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
-    path_plots = os.path.join(results_path, 'plots')
-    os.makedirs(path_plots, exist_ok=True)
+    plots_path = os.path.join(results_path, 'plots')
+    os.makedirs(plots_path, exist_ok=True)
     writer = SummaryWriter(log_dir=os.path.join(results_path, 'tensorboard'))
-    pass
+    base_dataset = BaseDataset()
+    training_dataset = TrainingDataset(dataset=base_dataset)
 
 
 if __name__ == '__main__':
