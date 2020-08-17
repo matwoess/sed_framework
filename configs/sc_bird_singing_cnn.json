@@ -1,0 +1,22 @@
+{
+  "results_path": "results",
+  "device": "cpu",
+  "learning_rate": 1e-3,
+  "weight_decay": 1e-4,
+  "n_updates": 5e3,
+  "classes": [
+    "birds singing"
+  ],
+  "network_config": {
+    "type": "CNN",
+    "n_hidden_layers": 3,
+    "n_in_channels": 3,
+    "n_kernels": 32,
+    "kernel_size": 7
+  },
+  "eval_settings": {
+    "tb_stats_at": 1e2,
+    "plot_at": 1e3,
+    "validate_at": 5e2
+  }
+}
