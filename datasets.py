@@ -12,6 +12,7 @@ class BaseDataset(Dataset):
     def __init__(self, data_path: str = os.path.join('data', 'dev')):
         if not os.path.exists(data_path):
             raise ValueError(f'dataset path "{data_path}" does not exist')
+        self.data_path = data_path
         audio_path = os.path.join(data_path, 'audio')
         self.audio_files = sorted(glob.glob(os.path.join(audio_path, '**/*.wav'), recursive=True))
 
@@ -22,26 +23,19 @@ class BaseDataset(Dataset):
         return self.audio_files[idx], idx
 
 
-class SpectrogramDataset(Dataset):
-    def __init__(self, dataset: Dataset, data_path: str = os.path.join('data', 'dev')):
-        self.dataset = dataset
-        if not os.path.exists(data_path):
-            raise ValueError(f'dataset path "{data_path}" does not exist')
-
-    def __len__(self):
-        return self.dataset.__len__()
-
+class SpectrogramDataset(BaseDataset):
     def __getitem__(self, idx):
-        audio_file, _ = self.dataset.__getitem__(idx)
+        audio_file, _ = super(SpectrogramDataset, self).__getitem__(idx)
         audio, sr = librosa.load(audio_file)
-        spec = np.abs(librosa.stft(audio, n_fft=2048))
+        spec = np.abs(librosa.stft(audio, n_fft=2048) ** 2)
         mels = librosa.mel_frequencies(n_mels=64)
         mfccs = librosa.feature.mfcc(audio, sr=sr)
-        return spec, mfccs, mels, sr, idx
+        return audio_file, spec, mfccs, mels, idx
 
 
-def read_annotations(annotation_files):
+def read_annotations(meta_path):
     annotations = []
+    annotation_files = sorted(glob.glob(os.path.join(meta_path, '**/*.ann'), recursive=True))
     for annotation_file in annotation_files:
         with open(annotation_file, 'r') as af:
             content = list(csv.reader(af, delimiter='\t'))
@@ -54,18 +48,51 @@ def read_annotations(annotation_files):
     return annotations
 
 
-class TrainingDataset(Dataset):
-    def __init__(self, dataset: Dataset, data_path: str = os.path.join('data', 'dev')):
-        self.dataset = dataset
-        if not os.path.exists(data_path):
-            raise ValueError(f'dataset path "{data_path}" does not exist')
-        meta_path = os.path.join(data_path, 'meta')
-        annotation_files = sorted(glob.glob(os.path.join(meta_path, '**/*.ann'), recursive=True))
-        self.annotations = read_annotations(annotation_files)
+def get_folds(data_path, eval_setup_folder, num_folds=4):
+    folds = []
+    for i in range(1, num_folds + 1):
+        train_fold = sorted(glob.glob(os.path.join(data_path, eval_setup_folder, f'**/*fold{i}_train.txt'), recursive=True))
+        test_fold = sorted(glob.glob(os.path.join(data_path, eval_setup_folder, f'**/*fold{i}_test.txt'), recursive=True))
+        # eval_fold = sorted(glob.glob(os.path.join(eval_setup_path, f'**/*fold{i}_evaluate.txt'), recursive=True))
+        train_files, test_files = [], []
+        for file in train_fold:
+            with open(file, 'r') as f:
+                content = list(csv.reader(f, delimiter='\t'))
+            train_files.extend(set([row[0] for row in content]))
+        for file in test_fold:
+            with open(file, 'r') as f:
+                content = list(csv.reader(f, delimiter='\t'))
+            test_files.extend(set([row[0] for row in content]))
+        # for file in eval_fold:
+        #     with open(file, 'r') as f:
+        #         content = list(csv.reader(f, delimiter='\t'))
+        #     eval_files.extend(set([row[0] for row in content]))
+        train_files = [os.path.join(data_path, f) for f in train_files]
+        test_files = [os.path.join(data_path, f) for f in test_files]
+        folds.append({'fold': i, 'train_files': train_files, 'test_files': test_files})
+    return folds
 
-    def __len__(self):
-        return self.dataset.__len__()
+
+def get_fold_indices(audio_files, folds):
+    fold_indices = []
+    for fold in folds:
+        train_indices, test_indices = [], []
+        for file in fold['train_files']:
+            train_indices.append(audio_files.index(file))
+        for file in fold['test_files']:
+            test_indices.append(audio_files.index(file))
+        fold_indices.append((train_indices, test_indices))
+    return fold_indices
+
+
+class TrainingDataset(SpectrogramDataset):
+    def __init__(self, data_path: str = os.path.join('data', 'dev')):
+        super().__init__(data_path)
+        meta_path = os.path.join(self.data_path, 'meta')
+        self.annotations = read_annotations(meta_path)
+        self.folds = get_folds(data_path, 'evaluation_setup', num_folds=4)
+        self.fold_indices = get_fold_indices(self.audio_files, self.folds)
 
     def __getitem__(self, idx):
-        spec, mfccs, mels, sr, _ = self.dataset.__getitem__(idx)
-        return spec, mfccs, mels, sr, self.annotations[idx], idx
+        audio_file, spec, mfccs, mels, _ = super(TrainingDataset, self).__getitem__()
+        return audio_file, spec, mfccs, mels, self.annotations[idx], idx
