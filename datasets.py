@@ -94,5 +94,5 @@ class TrainingDataset(SpectrogramDataset):
         self.fold_indices = get_fold_indices(self.audio_files, self.folds)
 
     def __getitem__(self, idx):
-        audio_file, spec, mfccs, mels, _ = super(TrainingDataset, self).__getitem__()
+        audio_file, spec, mfccs, mels, _ = super(TrainingDataset, self).__getitem__(idx)
         return audio_file, spec, mfccs, mels, self.annotations[idx], idx

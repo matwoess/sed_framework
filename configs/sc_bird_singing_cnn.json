@@ -8,11 +8,9 @@
     "birds singing"
   ],
   "network_config": {
-    "type": "CNN",
-    "n_hidden_layers": 3,
-    "n_in_channels": 3,
-    "n_kernels": 32,
-    "kernel_size": 7
+    "in_channels": 1,
+    "n_kernels": 64,
+    "out_features": 18
   },
   "eval_settings": {
     "tb_stats_at": 1e2,
