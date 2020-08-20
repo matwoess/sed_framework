@@ -27,10 +27,10 @@ class SpectrogramDataset(BaseDataset):
     def __getitem__(self, idx):
         audio_file, _ = super(SpectrogramDataset, self).__getitem__(idx)
         audio, sr = librosa.load(audio_file)
-        spec = np.abs(librosa.stft(audio, n_fft=2048) ** 2)
-        mels = librosa.mel_frequencies(n_mels=64)
+        spec = np.abs(librosa.stft(audio, n_fft=1024, hop_length=512))  # magnitudes only
+        mels = librosa.feature.melspectrogram(y=audio, sr=sr, n_fft=1024, hop_length=512)
         mfccs = librosa.feature.mfcc(audio, sr=sr)
-        return audio_file, spec, mfccs, mels, idx
+        return spec.T, mfccs.T, mels.T, sr, audio_file, idx
 
 
 def read_annotations(meta_path):
@@ -85,7 +85,7 @@ def get_fold_indices(audio_files, folds):
     return fold_indices
 
 
-class TrainingDataset(SpectrogramDataset):
+class FoldsDataset(SpectrogramDataset):
     def __init__(self, data_path: str = os.path.join('data', 'dev')):
         super().__init__(data_path)
         meta_path = os.path.join(self.data_path, 'meta')
@@ -94,5 +94,5 @@ class TrainingDataset(SpectrogramDataset):
         self.fold_indices = get_fold_indices(self.audio_files, self.folds)
 
     def __getitem__(self, idx):
-        audio_file, spec, mfccs, mels, _ = super(TrainingDataset, self).__getitem__(idx)
-        return audio_file, spec, mfccs, mels, self.annotations[idx], idx
+        spec, mfccs, mels, sr, audio_file, _ = super(FoldsDataset, self).__getitem__(idx)
+        return spec, mfccs, mels, self.annotations[idx], sr, audio_file, idx

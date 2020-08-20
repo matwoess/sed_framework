@@ -4,17 +4,35 @@ import os
 import torch
 import torch.utils.data
 import numpy as np
+import typing
+from typing import Dict
+from torch import Tensor
 from torch.utils.data import Subset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import tqdm
 
 from architectures import DorferCNN
-from datasets import TrainingDataset
+from datasets import FoldsDataset
 import utils
 
 
 def evaluate_model(net, dataloader, device) -> torch.Tensor:
     return torch.empty()
+
+
+# TODO: make part of dataset instead
+def get_target_array(length, annotations: dict, classes, sr) -> Dict[str, Tensor]:
+    target_dict = {}
+    for cls in classes:
+        targets = np.zeros(length)
+        onsets, offsets, events = annotations['onsets'], annotations['offsets'], annotations['events']
+        class_events = [(onset, offset) for onset, offset, event in zip(onsets, offsets, events) if event == cls]
+        for onset, offset in class_events:
+            onset_idx = int(onset * sr)
+            offset_idx = int(offset * sr)
+            targets[onset_idx:offset_idx] = 1
+        target_dict[cls] = torch.tensor(targets)
+    return target_dict
 
 
 def main(results_path: str, network_config: dict, eval_settings: dict, classes: list, learning_rate: int = 1e-3,
@@ -23,7 +41,7 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
     plots_path = os.path.join(results_path, 'plots')
     os.makedirs(plots_path, exist_ok=True)
     writer = SummaryWriter(log_dir=os.path.join(results_path, 'tensorboard'))
-    training_dataset = TrainingDataset()
+    training_dataset = FoldsDataset()
 
     # Create Network
     net = DorferCNN(**network_config)
@@ -49,45 +67,53 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
         train_loader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
         val_loader = DataLoader(val_set, batch_size=1, shuffle=False, num_workers=0)
         for data in train_loader:
-            file, spec, mfccs, mels, ann, idx = data
-            inputs = spec  # TODO
-            targets = ann  # TODO
-            inputs.to(device)
-            optimizer.zero_grad()
-            predictions = net(inputs)
-            loss = loss_fn(predictions - targets)  # TODO
-            loss = loss.mean()
-            loss.backward()
-            optimizer.step()
+            spec, mfccs, mels, ann, sr, file, idx = data
+            all_inputs = mels
+            len_inputs = all_inputs[0].shape[0]  # TODO
+            all_targets = get_target_array(len_inputs, ann, classes, sr)
+            all_targets = all_targets[classes[0]]  # TODO
+            input_batch_size = 512
+            for batch in range(int(len_inputs / input_batch_size)):
+                end_idx = min((batch + 1) * input_batch_size, len_inputs)
+                inputs = all_inputs[batch * input_batch_size: end_idx]
+                targets = all_targets[batch * input_batch_size: end_idx]
+                inputs.to(device)
+                targets.to(device)
+                optimizer.zero_grad()
+                predictions = net(inputs)
+                loss = loss_fn(np.abs(predictions - targets))
+                loss = loss.mean()
+                loss.backward()
+                optimizer.step()
 
-            # Print current status and score
-            if update % tb_stats_at == 0 and update > 0:
-                writer.add_scalar(tag="training/loss", scalar_value=loss.cpu(), global_step=update)
-            # Plot output
-            if update % plot_at == 0 and update > 0:
-                pass
-                utils.plot(inputs.detach().numpy(), targets.detach().numpy(), predictions.detach().numpy(), update)
+                # Print current status and score
+                if update % tb_stats_at == 0 and update > 0:
+                    writer.add_scalar(tag="training/loss", scalar_value=loss.cpu(), global_step=update)
+                # Plot output
+                if update % plot_at == 0 and update > 0:
+                    pass
+                    utils.plot(inputs.detach().numpy(), targets.detach().numpy(), predictions.detach().numpy(), update)
 
-            # Evaluate model on validation set
-            if update % validate_at == 0 and update > 0:
-                val_loss = evaluate_model(net, dataloader=val_loader, device=device)
-                writer.add_scalar(tag="validation/loss", scalar_value=val_loss, global_step=update)
-                # Add weights to tensorboard
-                for i, param in enumerate(net.parameters()):
-                    writer.add_histogram(tag=f'validation/param_{i}', values=param.cpu(), global_step=update)
-                # Add gradients to tensorboard
-                for i, param in enumerate(net.parameters()):
-                    writer.add_histogram(tag=f'validation/gradients_{i}', values=param.grad.cpu(),
-                                         global_step=update)
-                # Save best model for early stopping
-                if best_validation_loss > val_loss:
-                    best_validation_loss = val_loss
-                    print(f'{val_loss} < {best_validation_loss}... saving as new best_model.pt')
-                    torch.save(net, os.path.join(results_path, 'best_model.pt'))
+                # Evaluate model on validation set
+                if update % validate_at == 0 and update > 0:
+                    val_loss = evaluate_model(net, dataloader=val_loader, device=device)
+                    writer.add_scalar(tag="validation/loss", scalar_value=val_loss, global_step=update)
+                    # Add weights to tensorboard
+                    for i, param in enumerate(net.parameters()):
+                        writer.add_histogram(tag=f'validation/param_{i}', values=param.cpu(), global_step=update)
+                    # Add gradients to tensorboard
+                    for i, param in enumerate(net.parameters()):
+                        writer.add_histogram(tag=f'validation/gradients_{i}', values=param.grad.cpu(),
+                                             global_step=update)
+                    # Save best model for early stopping
+                    if best_validation_loss > val_loss:
+                        best_validation_loss = val_loss
+                        print(f'{val_loss} < {best_validation_loss}... saving as new best_model.pt')
+                        torch.save(net, os.path.join(results_path, 'best_model.pt'))
 
-            progress_bar.set_description(f"loss: {loss:7.5f}", refresh=True)
-            progress_bar.update()
-            update += 1
+                progress_bar.set_description(f"loss: {loss:7.5f}", refresh=True)
+                progress_bar.update()
+                update += 1
 
     progress_bar.close()
     print('finished training')
@@ -102,7 +128,7 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
     val_set = Subset(training_dataset, training_dataset.fold_indices[fold_idx][0])
     val_loader = DataLoader(val_set, batch_size=1, shuffle=False, num_workers=0)
 
-    test_dataset = TrainingDataset(data_path=os.path.join('data', 'eval'))
+    test_dataset = FoldsDataset(data_path=os.path.join('data', 'eval'))
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0)
 
     test_loss = evaluate_model(net, dataloader=test_loader, device=device)
