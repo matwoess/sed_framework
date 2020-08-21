@@ -7,10 +7,11 @@
   "classes": [
     "birds singing"
   ],
+  "scenes": ["residential_area"],
   "network_config": {
     "in_channels": 1,
     "n_kernels": 64,
-    "out_features": 18
+    "out_features": 1
   },
   "eval_settings": {
     "tb_stats_at": 1e2,
