@@ -43,10 +43,10 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
     plots_path = os.path.join(results_path, 'plots')
     os.makedirs(plots_path, exist_ok=True)
     writer = SummaryWriter(log_dir=os.path.join(results_path, 'tensorboard'))
-    training_dataset = BaseDataset(scenes, features='mels')
+    training_dataset = BaseDataset(scenes=scenes, features='mels')
 
     # Create Network
-    net = SimpleCNN(**network_config)
+    net = DorferCNN(**network_config)
     net.to(device)
     # Get loss function
     loss_fn = torch.nn.BCELoss()
@@ -62,24 +62,27 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
 
     # Save initial model as "best" model (will be overwritten later)
     torch.save(net, os.path.join(results_path, 'best_model.pt'))
-
-    for fold_idx in range(4):
+    fold_idx = -1
+    while update <= n_updates:
+        fold_idx = (fold_idx + 1) % 4
         train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes[0], fold_idx)[0])
         val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes[0], fold_idx)[1])
-        train_set = FeatureDataset(train_set, classes)
-        val_set = FeatureDataset(val_set, classes)
-        train_loader = DataLoader(train_set, batch_size=384, shuffle=False, num_workers=0)
-        val_loader = DataLoader(val_set, batch_size=384, shuffle=False, num_workers=0)
+        train_set = FeatureDataset(train_set, classes, excerpt_size=384)
+        val_set = FeatureDataset(val_set, classes, excerpt_size=384)
+        train_loader = DataLoader(train_set, batch_size=16, shuffle=False, num_workers=0)
+        val_loader = DataLoader(val_set, batch_size=16, shuffle=False, num_workers=0)
         for data in train_loader:
             inputs, targets, idx = data
-            inputs.unsqueeze_(0)
-            inputs.unsqueeze_(0)
+            inputs.unsqueeze_(1)
+            inputs = inputs.type(torch.float32)
+            targets = targets.type(torch.float32)
             inputs.to(device)
             targets.to(device)
             optimizer.zero_grad()
             predictions = net(inputs)
-            loss = loss_fn(np.abs(predictions - targets))
-            loss = loss.mean()
+            predictions = torch.reshape(predictions, (predictions.shape[0], -1))
+            loss = loss_fn(predictions, targets)
+            # loss = loss.mean()
             loss.backward()
             optimizer.step()
 
@@ -125,7 +128,7 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
     val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes[0], fold_idx)[1])
     val_loader = DataLoader(val_set, batch_size=1, shuffle=False, num_workers=0)
 
-    test_dataset = BaseDataset(scenes, data_path=os.path.join('data', 'eval'))
+    test_dataset = BaseDataset(scenes=scenes, features='mels', data_path=os.path.join('data', 'eval'))
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0)
 
     test_loss = evaluate_model(net, dataloader=test_loader, device=device)

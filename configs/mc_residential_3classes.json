@@ -5,13 +5,15 @@
   "weight_decay": 1e-4,
   "n_updates": 5e3,
   "classes": [
-    "birds singing"
+    "bird singing",
+    "children shouting",
+    "wind blowing"
   ],
   "scenes": ["residential_area"],
   "network_config": {
     "in_channels": 1,
     "n_kernels": 64,
-    "out_features": 1
+    "out_features": 3
   },
   "eval_settings": {
     "tb_stats_at": 1e2,
