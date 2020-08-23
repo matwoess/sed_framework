@@ -16,22 +16,21 @@ from datasets import BaseDataset, FeatureDataset
 import utils
 
 
-def evaluate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, device: torch.device) -> torch.Tensor:
-    return torch.empty()
-
-
-# TODO: make part of dataset instead
-def get_target_array(length: int, annotations: list, classes: list, sr: int) -> Dict[str, Tensor]:
-    target_dict = {}
-    for cls in classes:
-        targets = np.zeros(length)
-        class_events = [(item['onset'], item['offset']) for item in annotations if item['event'] == cls]
-        for onset, offset in class_events:
-            onset_idx = int(onset * sr)
-            offset_idx = int(offset * sr)
-            targets[onset_idx:offset_idx] = 1
-        target_dict[cls] = torch.tensor(targets)
-    return target_dict
+def evaluate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, device: torch.device,
+                   loss_fn=torch.nn.BCELoss()) -> torch.Tensor:
+    loss = torch.tensor(0., device=device)
+    with torch.no_grad():
+        for data in tqdm.tqdm(dataloader, desc='scoring', position=0):
+            inputs, targets, idx = data
+            inputs.unsqueeze_(1)
+            inputs = inputs.to(device, dtype=torch.float32)
+            targets = targets.to(device, dtype=torch.float32)
+            predictions = net(inputs)
+            predictions = torch.reshape(predictions, (predictions.shape[0], -1))
+            # loss += loss_fn(predictions, targets)
+            loss += (torch.stack([loss_fn(pred, target) for pred, target in zip(predictions, targets)]).sum()
+                     / len(dataloader.dataset))
+    return loss
 
 
 def main(results_path: str, network_config: dict, eval_settings: dict, classes: list, learning_rate: int = 1e-3,
@@ -56,12 +55,12 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
     tb_stats_at = eval_settings['tb_stats_at']  # print stats to tensorboard every x updates
     plot_at = eval_settings['plot_at']  # plot every x updates
     validate_at = eval_settings['validate_at']  # test on validation set and check for new best model every x updates
-    update = 0  # current update counter
     best_validation_loss = np.inf  # best validation loss so far
     progress_bar = tqdm.tqdm(total=n_updates, desc=f"loss: {np.nan:7.5f}", position=0)
 
     # Save initial model as "best" model (will be overwritten later)
     torch.save(net, os.path.join(results_path, 'best_model.pt'))
+    update = 0  # current update counter
     fold_idx = -1
     while update <= n_updates:
         fold_idx = (fold_idx + 1) % 4
@@ -74,14 +73,13 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
         for data in train_loader:
             inputs, targets, idx = data
             inputs.unsqueeze_(1)
-            inputs = inputs.type(torch.float32)
-            targets = targets.type(torch.float32)
-            inputs.to(device)
-            targets.to(device)
+            inputs = inputs.to(device, dtype=torch.float32)
+            targets = targets.to(device, dtype=torch.float32)
             optimizer.zero_grad()
             predictions = net(inputs)
             predictions = torch.reshape(predictions, (predictions.shape[0], -1))
             loss = loss_fn(predictions, targets)
+            # loss = torch.stack([loss_fn(pred, target) for pred, target in zip(predictions, targets)]).sum()
             # loss = loss.mean()
             loss.backward()
             optimizer.step()
@@ -110,10 +108,11 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
                     best_validation_loss = val_loss
                     print(f'{val_loss} < {best_validation_loss}... saving as new best_model.pt')
                     torch.save(net, os.path.join(results_path, 'best_model.pt'))
-
             progress_bar.set_description(f"loss: {loss:7.5f}", refresh=True)
             progress_bar.update()
             update += 1
+            if update >= n_updates:
+                break
 
     progress_bar.close()
     print('finished training')
@@ -123,13 +122,16 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
     fold_idx = 0
 
     train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes[0], fold_idx)[0])
-    train_loader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
+    train_set = FeatureDataset(train_set, classes, excerpt_size=384)
+    train_loader = DataLoader(train_set, batch_size=16, shuffle=False, num_workers=0)
 
     val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes[0], fold_idx)[1])
-    val_loader = DataLoader(val_set, batch_size=1, shuffle=False, num_workers=0)
+    val_set = FeatureDataset(val_set, classes, excerpt_size=384)
+    val_loader = DataLoader(val_set, batch_size=16, shuffle=False, num_workers=0)
 
-    test_dataset = BaseDataset(scenes=scenes, features='mels', data_path=os.path.join('data', 'eval'))
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0)
+    test_set = BaseDataset(scenes=scenes, features='mels', data_path=os.path.join('data', 'eval'))
+    test_set = FeatureDataset(test_set, classes, excerpt_size=384)
+    test_loader = DataLoader(test_set, batch_size=16, shuffle=False, num_workers=0)
 
     test_loss = evaluate_model(net, dataloader=test_loader, device=device)
     val_loss = evaluate_model(net, dataloader=val_loader, device=device)

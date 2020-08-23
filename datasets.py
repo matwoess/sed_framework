@@ -137,7 +137,12 @@ class BaseDataset(Dataset):
             return [], []
 
     def __len__(self):
-        return len(self.home_dataset) + len(self.residential_dataset)
+        if self.home_dataset is None:
+            return len(self.residential_dataset)
+        elif self.residential_dataset is None:
+            return len(self.home_dataset)
+        else:
+            return len(self.home_dataset) + len(self.residential_dataset)
 
     def __getitem__(self, idx):
         i = idx
@@ -160,8 +165,8 @@ def get_target_array(curr_seq_idx: int, annotations: list, classes: list, sr: in
     for i, cls in enumerate(classes):
         class_events = [(item['onset'], item['offset']) for item in annotations if item['event'] == cls]
         for onset, offset in class_events:
-            onset_idx = int(float(onset) * sr)
-            offset_idx = int(float(offset) * sr)
+            onset_idx = int(float(onset.replace(',', '.')) * sr)
+            offset_idx = int(float(offset.replace(',', '.')) * sr)
             if onset_idx <= curr_seq_idx <= offset_idx:
                 target_array[i] = 1
                 break
@@ -178,7 +183,7 @@ class FeatureDataset(Dataset):
             feature_vector = [row for row in feature]
             length = len(feature_vector)
             n_excerpts = int(np.ceil(length / excerpt_size))
-            for i in range(n_excerpts):
+            for i in range(n_excerpts):  # TODO: might wanna overlap excerpts
                 excerpt = np.zeros(shape=(excerpt_size, len(feature_vector[0])))
                 begin_idx = i * excerpt_size
                 end_idx = min((i + 1) * excerpt_size, feature.shape[0])

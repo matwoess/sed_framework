@@ -172,6 +172,7 @@ class DorferCNN(torch.nn.Module):
 
         layers = []
         n_kernels = out_features  # 18
+        # TODO 1 instead of (4, 6) results in a (4, 6) output "image"
         layers.append(Conv2d(in_channels=in_channels, out_channels=n_kernels, kernel_size=(4, 6), stride=1, padding=0))
         layers.append(ReLU())
         # layers.append(BatchNorm2d(n_kernels, momentum=0.1))
