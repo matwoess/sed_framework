@@ -2,60 +2,56 @@
 
 import torch
 import torch.nn
-from torch.nn import Conv2d, BatchNorm2d, ReLU, Sequential, Softmax, MaxPool2d, Dropout, Sigmoid
+from torch.nn import Conv2d, BatchNorm2d, ReLU, Sequential, MaxPool2d, Dropout, Sigmoid, Linear
 
 
 class SimpleCNN(torch.nn.Module):
-    def __init__(self, in_channels: int = 1, n_kernels: int = 64, out_features: int = 18):
+    def __init__(self, in_channels: int = 1, n_kernels: int = 16, n_features: int = 128, out_features: int = 18):
         """Simple CNN"""
         super(SimpleCNN, self).__init__()
+        self.out_features = out_features
+
         layers = []
-        layers.append(Conv2d(in_channels=in_channels, out_channels=n_kernels, kernel_size=5, stride=1, padding=2))
-        layers.append(BatchNorm2d(n_kernels))
-        layers.append(MaxPool2d(2))
+        layers.append(Conv2d(in_channels=in_channels, out_channels=n_kernels, kernel_size=3, stride=1, padding=1))
         layers.append(ReLU())
+        layers.append(BatchNorm2d(n_kernels))
+        layers.append(MaxPool2d((2, 1)))
         self.layers1 = torch.nn.Sequential(*layers)
 
         layers = []
         in_channels = n_kernels
+        n_kernels *= 2
         layers.append(Conv2d(in_channels=in_channels, out_channels=n_kernels, kernel_size=3, stride=1, padding=1))
-        layers.append(BatchNorm2d(n_kernels))
-        layers.append(MaxPool2d(2))
         layers.append(ReLU())
+        layers.append(BatchNorm2d(n_kernels))
+        layers.append(MaxPool2d((2, 1)))
         self.layers2 = torch.nn.Sequential(*layers)
 
         layers = []
         in_channels = n_kernels
-        layers.append(Conv2d(in_channels=in_channels, out_channels=n_kernels, kernel_size=3, stride=1, padding=1))
-        layers.append(BatchNorm2d(n_kernels))
-        layers.append(MaxPool2d((1, 2)))
+        layers.append(Conv2d(in_channels=in_channels, out_channels=n_kernels, kernel_size=(32, 1), stride=1, padding=0))
         layers.append(ReLU())
+        layers.append(BatchNorm2d(n_kernels))
+        # layers.append(torch.nn.AvgPool2d(n_kernels))
         self.layers3 = torch.nn.Sequential(*layers)
 
-        layers = []
-        in_channels = n_kernels
-        layers.append(Conv2d(in_channels=in_channels, out_channels=n_kernels, kernel_size=3, stride=1, padding=1))
-        layers.append(BatchNorm2d(n_kernels))
-        layers.append(MaxPool2d((1, 2)))
-        layers.append(ReLU())
-        self.layers4 = torch.nn.Sequential(*layers)
-
-        layers = []
-        n_kernels = out_features
-        layers.append(Conv2d(in_channels=in_channels, out_channels=n_kernels, kernel_size=1, stride=1, padding=0))
-        layers.append(BatchNorm2d(n_kernels))
-        layers.append(torch.nn.AvgPool2d(n_kernels))
-        layers.append(Flatten())
-        layers.append(Softmax())
-        self.output_layer = Sequential(*layers)
+        for i in range(out_features):
+            layers = [Linear(n_features, 1), Sigmoid()]
+            self.__setattr__(f'output_layer{i}', Sequential(*layers))
 
     def forward(self, x):
-        x = self.layers1(x)
-        x = self.layers2(x)
-        x = self.layers3(x)
-        x = self.layers4(x)
-        x = self.output_layer(x)
-        return x
+        x = self.layers1(x)  # (B, 1, 128, 384) -> (B, 64, 64, 384)
+        x = self.layers2(x)  # (B, 64, 64, 384) -> (B, 128, 32, 384)
+        x = self.layers3(x)  # (B, 128, 32, 384) -> (B, 128, 1, 384)
+        x.squeeze_(2)  # (B, 128, 1, 384) -> (B, 128, 384)
+        fnn_input = x.transpose(1, 2)  # (B, 128, 384) -> (B, 384, 128)
+        predictions = []
+        for idx in range(self.out_features):
+            fnn = self.__getattr__(f'output_layer{idx}')
+            class_predictions = fnn(fnn_input)  # (B, 384, 128) -> (B, 384, 1)
+            class_predictions = class_predictions.transpose(2, 1)  # (B, 384, 1) -> (B, 1, 384)
+            predictions.append(class_predictions)  # predictions += (B, 1, 384)
+        return torch.stack(predictions, dim=2).squeeze(1)  # [predictions] -> (B, 1, 3, 384) -> (B, 3, 384)
 
 
 class Flatten(torch.nn.Module):

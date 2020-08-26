@@ -15,6 +15,8 @@ from architectures import DorferCNN, SimpleCNN
 from datasets import BaseDataset, FeatureDataset
 import utils
 
+torch.random.manual_seed(0)  # Set a known random seed for reproducibility
+
 
 def evaluate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, device: torch.device,
                    loss_fn=torch.nn.BCELoss()) -> torch.Tensor:
@@ -45,7 +47,7 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
     training_dataset = BaseDataset(scenes=scenes, features='mels')
 
     # Create Network
-    net = DorferCNN(**network_config)
+    net = SimpleCNN(**network_config)
     net.to(device)
     # Get loss function
     loss_fn = torch.nn.BCELoss()
@@ -77,7 +79,6 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
             targets = targets.to(device, dtype=torch.float32)
             optimizer.zero_grad()
             predictions = net(inputs)
-            predictions = torch.reshape(predictions, (predictions.shape[0], -1))
             loss = loss_fn(predictions, targets)
             # loss = torch.stack([loss_fn(pred, target) for pred, target in zip(predictions, targets)]).sum()
             # loss = loss.mean()

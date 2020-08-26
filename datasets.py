@@ -160,16 +160,25 @@ class BaseDataset(Dataset):
         return feature, ann, sr, audio_file, idx
 
 
-def get_target_array(curr_seq_idx: int, annotations: list, classes: list, sr: int) -> np.ndarray:
-    target_array = np.zeros(len(classes))
+def get_target_array(from_idx: int, to_idx: int, annotations: list, classes: list, excerpt_size: int, sr: int,
+                     hop_size: int = 512) -> np.ndarray:
+    target_array = np.zeros((len(classes), excerpt_size))
+    # from_seconds = (from_idx * hop_size / sr)
+    # to_seconds = (to_idx * hop_size / sr)
+    iteration = from_idx // excerpt_size
     for i, cls in enumerate(classes):
         class_events = [(item['onset'], item['offset']) for item in annotations if item['event'] == cls]
         for onset, offset in class_events:
-            onset_idx = int(float(onset.replace(',', '.')) * sr)
-            offset_idx = int(float(offset.replace(',', '.')) * sr)
-            if onset_idx <= curr_seq_idx <= offset_idx:
-                target_array[i] = 1
-                break
+            onset_time = float(onset.replace(',', '.'))
+            offset_time = float(offset.replace(',', '.'))
+            onset_idx = int(onset_time * sr / hop_size)
+            offset_idx = int(offset_time * sr / hop_size)
+            if from_idx <= onset_idx <= to_idx or from_idx <= offset_idx <= to_idx:
+                start = max(onset_idx, from_idx)
+                end = min(offset_idx, to_idx)
+                start = start - iteration * excerpt_size
+                end = end - iteration * excerpt_size
+                target_array[i, start:end] = 1
     return target_array
 
 
@@ -183,14 +192,13 @@ class FeatureDataset(Dataset):
             feature_vector = [row for row in feature]
             length = len(feature_vector)
             n_excerpts = int(np.ceil(length / excerpt_size))
-            for i in range(n_excerpts):  # TODO: might wanna overlap excerpts
+            for i in range(n_excerpts):  # TODO: might wanna overlap excerpts with half excerpt_size?
                 excerpt = np.zeros(shape=(excerpt_size, len(feature_vector[0])))
                 begin_idx = i * excerpt_size
                 end_idx = min((i + 1) * excerpt_size, feature.shape[0])
                 excerpt[0:end_idx - begin_idx, :] = feature[begin_idx:end_idx]
-                features.append(excerpt)
-                curr_seq_idx = i * excerpt_size + excerpt_size // 2
-                target_array = get_target_array(curr_seq_idx, ann, classes, sr)
+                features.append(excerpt.T)
+                target_array = get_target_array(begin_idx, end_idx, ann, classes, excerpt_size, sr, hop_size=512)
                 targets.append(target_array)
             total_len += n_excerpts
         self.features = features
