@@ -29,29 +29,30 @@ class SimpleCNN(torch.nn.Module):
 
         layers = []
         in_channels = n_kernels
-        layers.append(Conv2d(in_channels=in_channels, out_channels=n_kernels, kernel_size=(32, 1), stride=1, padding=0))
+        layers.append(Conv2d(in_channels=in_channels, out_channels=n_kernels, kernel_size=(n_features // 4, 1),
+                             stride=1, padding=0))
         layers.append(ReLU())
         layers.append(BatchNorm2d(n_kernels))
         # layers.append(torch.nn.AvgPool2d(n_kernels))
         self.layers3 = torch.nn.Sequential(*layers)
 
         for i in range(out_features):
-            layers = [Linear(n_features, 1), Sigmoid()]
+            layers = [Linear(n_kernels, 1), Sigmoid()]
             self.__setattr__(f'output_layer{i}', Sequential(*layers))
 
     def forward(self, x):
-        x = self.layers1(x)  # (B, 1, 128, 384) -> (B, 64, 64, 384)
-        x = self.layers2(x)  # (B, 64, 64, 384) -> (B, 128, 32, 384)
-        x = self.layers3(x)  # (B, 128, 32, 384) -> (B, 128, 1, 384)
-        x.squeeze_(2)  # (B, 128, 1, 384) -> (B, 128, 384)
-        fnn_input = x.transpose(1, 2)  # (B, 128, 384) -> (B, 384, 128)
+        x = self.layers1(x)  # (B, 1, F, T) -> (B, K, F/2, T)
+        x = self.layers2(x)  # (B, K, F/2, T) -> (B, 2K, F/4, T)
+        x = self.layers3(x)  # (B, 2K, F/4, T) -> (B, 2K, 1, T)
+        x.squeeze_(2)  # (B, 2K, 1, T) -> (B, 2K, T)
+        fnn_input = x.transpose(1, 2)  # (B, 2K, T) -> (B, T, 2K)
         predictions = []
         for idx in range(self.out_features):
             fnn = self.__getattr__(f'output_layer{idx}')
-            class_predictions = fnn(fnn_input)  # (B, 384, 128) -> (B, 384, 1)
-            class_predictions = class_predictions.transpose(2, 1)  # (B, 384, 1) -> (B, 1, 384)
-            predictions.append(class_predictions)  # predictions += (B, 1, 384)
-        return torch.stack(predictions, dim=2).squeeze(1)  # [predictions] -> (B, 1, 3, 384) -> (B, 3, 384)
+            class_predictions = fnn(fnn_input)  # (B, T, 2K) -> (B, T, 1)
+            class_predictions = class_predictions.transpose(2, 1)  # (B, T, 1) -> (B, 1, T)
+            predictions.append(class_predictions)  # predictions += (B, 1, T)
+        return torch.stack(predictions, dim=2).squeeze(1)  # [predictions] -> (B, 1, n_out, T) -> (B, n_out, T)
 
 
 class Flatten(torch.nn.Module):
