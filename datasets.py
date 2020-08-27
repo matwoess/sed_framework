@@ -7,10 +7,10 @@ from typing import List, Tuple, Dict
 import librosa
 import numpy as np
 import dill as pickle
-import torch
-from torch import Tensor
 from torch.utils.data import Dataset
 from tqdm import tqdm
+
+import utils
 
 
 def read_annotations(meta_path):
@@ -124,7 +124,8 @@ class BaseDataset(Dataset):
     def __init__(self, scenes: List[str], features: str, data_path: str = os.path.join('data', 'dev'),
                  n_fft=1024, hop_length=512):
         if not os.path.exists(data_path):
-            raise ValueError(f'dataset path "{data_path}" does not exist')  # TODO: auto-download
+            utils.download_dataset()
+            # raise ValueError(f'dataset path "{data_path}" does not exist')
         self.data_path = data_path
         self.home_dataset = SceneDataset('home', features, data_path, n_fft, hop_length) if 'home' in scenes else None
         self.residential_dataset = SceneDataset('residential_area', features, data_path, n_fft,
