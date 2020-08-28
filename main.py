@@ -162,6 +162,8 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
         print(f"validation loss: {val_loss}", file=f)
         print(f"training loss: {train_loss}", file=f)
 
+    utils.zip_folder(results_path)
+
 
 if __name__ == '__main__':
     import argparse

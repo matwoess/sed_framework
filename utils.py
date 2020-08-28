@@ -129,6 +129,14 @@ def download_dataset(data_path: str = 'data'):
     os.remove(path_temp_file)
 
 
+def zip_folder(folder):
+    archive = zipfile.ZipFile(f'{folder}.zip', 'w', zipfile.ZIP_DEFLATED)
+    for root, dirs, files in os.walk(folder):
+        for file in files:
+            archive.write(os.path.join(root, file))
+    archive.close()
+
+
 if __name__ == '__main__':
     # download_dataset()
     np.random.seed(0)
@@ -139,4 +147,5 @@ if __name__ == '__main__':
     test_path = 'results/plots'
     test_update = 1
     # plot(test_targets, test_predictions, test_classes, test_path, test_update)
-    compute_metrics(test_targets, test_predictions, 'results/metrics', test_update)
+    # compute_metrics(test_targets, test_predictions, 'results/metrics', test_update)
+    # zip_folder('results')
