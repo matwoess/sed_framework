@@ -11,12 +11,24 @@
     "children shouting",
     "people speaking",
     "people walking",
-    "wind blowing"
+    "wind blowing",
+
+    "(object) rustling",
+    "(object) snapping",
+    "cupboard",
+    "cutlery",
+    "dishes",
+    "drawer",
+    "glass jingling",
+    "object impact",
+    "people walking",
+    "washing dishes",
+    "water tap running"
   ],
   "feature_type": "mels",
   "excerpt_size": 384,
   "batch_size": 16,
-  "scenes": ["residential_area"],
+  "scenes": ["residential_area", "home"],
   "network_config": {
     "in_channels": 1,
     "n_kernels": 32

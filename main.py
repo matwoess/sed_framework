@@ -81,8 +81,8 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
             targets = targets.to(device, dtype=torch.float32)
             optimizer.zero_grad()
             predictions = net(inputs)
-            # loss = loss_fn(predictions, targets)
-            loss = torch.stack([loss_fn(pred, target) for pred, target in zip(predictions, targets)]).sum()
+            loss = loss_fn(predictions, targets)
+            # loss = torch.stack([loss_fn(pred, target) for pred, target in zip(predictions, targets)]).sum()
             # loss = loss.mean()
             loss.backward()
             optimizer.step()
@@ -91,7 +91,7 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
             if update % plot_at == 0 and update > 0:
                 plot_targets = targets.detach().numpy()
                 plot_predictions = predictions.detach().numpy()
-                utils.plot(plot_targets, plot_predictions, classes, excerpt_size, plots_path, fold_iteration)
+                utils.plot(plot_targets, plot_predictions, classes, excerpt_size, plots_path, update)
 
             # update progress and update-counter
             progress_bar.set_description(f"loss: {loss:7.5f}", refresh=True)
@@ -102,7 +102,6 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
 
         # log training loss
         writer.add_scalar(tag="training/loss", scalar_value=loss.cpu(), global_step=update)
-
         # Evaluate model on validation set (after every complete training fold)
         val_loss = evaluate_model(net, dataloader=val_loader, device=device)
         writer.add_scalar(tag="validation/loss", scalar_value=val_loss, global_step=update)

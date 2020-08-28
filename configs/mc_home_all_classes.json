@@ -5,18 +5,22 @@
   "weight_decay": 1e-3,
   "n_updates": 5e3,
   "classes": [
-    "(object) banging",
-    "bird singing",
-    "car passing by",
-    "children shouting",
-    "people speaking",
+    "(object) rustling",
+    "(object) snapping",
+    "cupboard",
+    "cutlery",
+    "dishes",
+    "drawer",
+    "glass jingling",
+    "object impact",
     "people walking",
-    "wind blowing"
+    "washing dishes",
+    "water tap running"
   ],
   "feature_type": "mels",
   "excerpt_size": 384,
   "batch_size": 16,
-  "scenes": ["residential_area"],
+  "scenes": ["home"],
   "network_config": {
     "in_channels": 1,
     "n_kernels": 32

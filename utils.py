@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 def plot(targets: np.ndarray, predictions: np.ndarray, classes: list, length: int, path: str, iteration: int) -> None:
     os.makedirs(path, exist_ok=True)
     cmap = ['b', 'r', 'g', 'y', 'k', 'c', 'm', 'b', 'r', 'g', 'y', 'k', 'c', 'm']
+    label_size = 6 if len(classes) < 12 else 4
     # compute errors
     threshold = 0.5
     thresh_predictions = np.where(predictions >= threshold, 1, 0)
@@ -20,7 +21,7 @@ def plot(targets: np.ndarray, predictions: np.ndarray, classes: list, length: in
     plot_titles = ['target', 'prediction', 'error']
     batches = targets.shape[0]
     for b in range(batches):
-        plt.rc('ytick', labelsize=6)
+        plt.rc('ytick', labelsize=label_size)
         fig, ax = plt.subplots(3, 1)
         plt.setp(ax, yticklabels=classes, yticks=np.arange(len(classes)),
                  xlim=(-10, length + 5), ylim=(-0.5, len(classes) - 0.5))
@@ -34,8 +35,9 @@ def plot(targets: np.ndarray, predictions: np.ndarray, classes: list, length: in
                 ax[a].plot(x_data, y_data, marker='.', color=color, linestyle='None', markersize=1)
         # fig.show()
         fig.tight_layout()
-        fig.savefig(os.path.join(path, f"{iteration:07d}_{b:02d}.png"), dpi=750)
-        del fig
+        fig.savefig(os.path.join(path, f"{iteration:07d}_{b:02d}.png"), dpi=500)
+        fig.clf()
+    del fig
 
 
 def download_url(url, save_path, description, chunk_size=4096):
