@@ -37,7 +37,9 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
          ):
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
     plots_path = os.path.join(results_path, 'plots')
+    metrics_path = os.path.join(results_path, 'metrics')
     os.makedirs(plots_path, exist_ok=True)
+    os.makedirs(metrics_path, exist_ok=True)
     writer = SummaryWriter(log_dir=os.path.join(results_path, 'tensorboard'))
     training_dataset = BaseDataset(scenes=scenes, features=feature_type)
 
@@ -51,6 +53,7 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     plot_at = eval_settings['plot_at']
+    metrics_at = eval_settings['metrics_at']
     best_validation_loss = np.inf  # best validation loss so far
     progress_bar = tqdm.tqdm(total=n_updates, desc=f"loss: {np.nan:7.5f}", position=0)
 
@@ -67,8 +70,8 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
 
     while update <= n_updates:
         fold_idx = (fold_idx + 1) % 4
-        train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes[0], fold_idx)[0])
-        val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes[0], fold_idx)[1])
+        train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[0])
+        val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
         train_set = FeatureDataset(train_set, classes, excerpt_size=excerpt_size)
         val_set = FeatureDataset(val_set, classes, excerpt_size=excerpt_size)
         train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=False, num_workers=0)
@@ -87,11 +90,16 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
             loss.backward()
             optimizer.step()
 
-            # Plot output
+            # plot output
             if update % plot_at == 0 and update > 0:
                 plot_targets = targets.detach().numpy()
                 plot_predictions = predictions.detach().numpy()
-                utils.plot(plot_targets, plot_predictions, classes, excerpt_size, plots_path, update)
+                utils.plot(plot_targets, plot_predictions, classes, plots_path, update)
+            # compute metrics
+            if update % metrics_at == 0 and update > 0:
+                metric_targets = targets.detach().numpy()
+                metric_predictions = predictions.detach().numpy()
+                utils.compute_metrics(metric_targets, metric_predictions, metrics_path, update)
 
             # update progress and update-counter
             progress_bar.set_description(f"loss: {loss:7.5f}", refresh=True)
@@ -126,11 +134,11 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
     net = torch.load(os.path.join(results_path, 'best_model.pt'))
     fold_idx = 0
 
-    train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes[0], fold_idx)[0])
+    train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[0])
     train_set = FeatureDataset(train_set, classes, excerpt_size=excerpt_size)
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=False, num_workers=0)
 
-    val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes[0], fold_idx)[1])
+    val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
     val_set = FeatureDataset(val_set, classes, excerpt_size=excerpt_size)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
 
@@ -148,7 +156,7 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
     print(f"training loss: {train_loss}")
 
     # Write result to separate file
-    with open(os.path.join(results_path, 'results.txt'), 'w') as f:
+    with open(os.path.join(results_path, 'losses.txt'), 'w') as f:
         print(f"Scores:", file=f)
         print(f"test loss: {test_loss}", file=f)
         print(f"validation loss: {val_loss}", file=f)

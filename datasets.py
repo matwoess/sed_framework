@@ -2,7 +2,7 @@
 import csv
 import glob
 import os
-from typing import List, Tuple, Dict
+from typing import List, Tuple
 
 import librosa
 import numpy as np
@@ -131,21 +131,26 @@ class BaseDataset(Dataset):
         self.residential_dataset = SceneDataset('residential_area', features, data_path, n_fft,
                                                 hop_length) if 'residential_area' in scenes else None
 
-    def get_fold_indices(self, scene: str, fold_idx) -> Tuple[list, list]:
-        if scene == 'home':
-            return self.home_dataset.fold_indices[fold_idx]
-        elif scene == 'residential_area':
-            return self.residential_dataset.fold_indices[fold_idx]
-        else:
-            return [], []
+    def get_fold_indices(self, scenes: list, fold_idx) -> Tuple[list, list]:
+        train = []
+        val = []
+        if 'home' in scenes:
+            train_indices, val_indices = self.home_dataset.fold_indices[fold_idx]
+            train.extend(train_indices)
+            val.extend(val_indices)
+        if 'residential_area' in scenes:
+            train_indices, val_indices = self.residential_dataset.fold_indices[fold_idx]
+            train.extend(train_indices)
+            val.extend(val_indices)
+        return train, val
 
     def __len__(self):
+        total_len = 0
         if self.home_dataset is None:
-            return len(self.residential_dataset)
-        elif self.residential_dataset is None:
-            return len(self.home_dataset)
-        else:
-            return len(self.home_dataset) + len(self.residential_dataset)
+            total_len += len(self.residential_dataset)
+        if self.residential_dataset is None:
+            total_len += len(self.home_dataset)
+        return total_len
 
     def __getitem__(self, idx):
         i = idx
