@@ -90,17 +90,6 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
             loss.backward()
             optimizer.step()
 
-            # plot output
-            if update % plot_at == 0 and update > 0:
-                plot_targets = targets.detach().cpu().numpy()
-                plot_predictions = predictions.detach().cpu().numpy()
-                utils.plot(plot_targets, plot_predictions, classes, plots_path, update)
-            # compute metrics
-            if update % metrics_at == 0 and update > 0:
-                metric_targets = targets.detach().cpu().numpy()
-                metric_predictions = predictions.detach().cpu().numpy()
-                utils.compute_metrics(metric_targets, metric_predictions, metrics_path, update)
-
             if update % stats_at == 0 and update > 0:
                 # log training loss
                 writer.add_scalar(tag="training/loss", scalar_value=loss.cpu(), global_step=update)
@@ -120,6 +109,17 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
                     print(f'{val_loss} < {best_validation_loss}... saving as new best_model.pt')
                     best_validation_loss = val_loss
                     torch.save(net, model_path)
+
+            # plot output
+            if update % plot_at == 0 and update > 0:
+                plot_targets = targets.detach().cpu().numpy()
+                plot_predictions = predictions.detach().cpu().numpy()
+                utils.plot(plot_targets, plot_predictions, classes, plots_path, update)
+            # compute metrics
+            if update % metrics_at == 0 and update > 0:
+                metric_targets = targets.detach().cpu().numpy()
+                metric_predictions = predictions.detach().cpu().numpy()
+                utils.compute_metrics(metric_targets, metric_predictions, metrics_path, update)
 
             # update progress and update-counter
             progress_bar.set_description(f"loss: {loss:7.5f}", refresh=True)
