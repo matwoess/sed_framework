@@ -25,6 +25,8 @@
     "n_kernels": 32
   },
   "eval_settings": {
+    "stats_at": 5e1,
+    "validate_at": 1e2,
     "plot_at": 5e2,
     "metrics_at": 5e2
   }

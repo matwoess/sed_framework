@@ -62,26 +62,22 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     plot_at = eval_settings['plot_at']
+    stats_at = eval_settings['stats_at']
+    validate_at = eval_settings['validate_at']
     metrics_at = eval_settings['metrics_at']
     best_validation_loss = np.inf  # best validation loss so far
     progress_bar = tqdm.tqdm(total=n_updates, desc=f"loss: {np.nan:7.5f}", position=0)
     update = 0  # current update counter
-    fold_idx = -1
 
-    loss = torch.empty(0)
-    inputs = torch.empty(0)
-    targets = torch.empty(0)
-    predictions = torch.empty(0)
+    fold_idx = 0
+    train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[0])
+    val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
+    train_set = ExcerptDataset(train_set, classes, excerpt_size=excerpt_size)
+    val_set = ExcerptDataset(val_set, classes, excerpt_size=excerpt_size)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=False, num_workers=0)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
 
     while update <= n_updates:
-        fold_idx = (fold_idx + 1) % 4
-        train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[0])
-        val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
-        train_set = ExcerptDataset(train_set, classes, excerpt_size=excerpt_size)
-        val_set = ExcerptDataset(val_set, classes, excerpt_size=excerpt_size)
-        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=False, num_workers=0)
-        val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
-
         for data in train_loader:
             inputs, targets, _, idx = data
             inputs = inputs.to(device, dtype=torch.float32)
@@ -105,29 +101,32 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
                 metric_predictions = predictions.detach().numpy()
                 utils.compute_metrics(metric_targets, metric_predictions, metrics_path, update)
 
+            if update % stats_at == 0 and update > 0:
+                # log training loss
+                writer.add_scalar(tag="training/loss", scalar_value=loss.cpu(), global_step=update)
+
+            if update % validate_at == 0 and update > 0:
+                # Evaluate model on validation set (after every complete training fold)
+                val_loss = validate_model(net, dataloader=val_loader, device=device)
+                writer.add_scalar(tag="validation/loss", scalar_value=val_loss, global_step=update)
+                # Add weights to tensorboard
+                for i, param in enumerate(net.parameters()):
+                    writer.add_histogram(tag=f'validation/param_{i}', values=param.cpu(), global_step=update)
+                # Add gradients to tensorboard
+                for i, param in enumerate(net.parameters()):
+                    writer.add_histogram(tag=f'validation/gradients_{i}', values=param.grad.cpu(), global_step=update)
+                # Save best model for early stopping
+                if best_validation_loss > val_loss:
+                    print(f'{val_loss} < {best_validation_loss}... saving as new best_model.pt')
+                    best_validation_loss = val_loss
+                    torch.save(net, model_path)
+
             # update progress and update-counter
             progress_bar.set_description(f"loss: {loss:7.5f}", refresh=True)
             progress_bar.update()
             update += 1
             if update >= n_updates:
                 break
-
-        # log training loss
-        writer.add_scalar(tag="training/loss", scalar_value=loss.cpu(), global_step=update)
-        # Evaluate model on validation set (after every complete training fold)
-        val_loss = validate_model(net, dataloader=val_loader, device=device)
-        writer.add_scalar(tag="validation/loss", scalar_value=val_loss, global_step=update)
-        # Add weights to tensorboard
-        for i, param in enumerate(net.parameters()):
-            writer.add_histogram(tag=f'validation/param_{i}', values=param.cpu(), global_step=update)
-        # Add gradients to tensorboard
-        for i, param in enumerate(net.parameters()):
-            writer.add_histogram(tag=f'validation/gradients_{i}', values=param.grad.cpu(), global_step=update)
-        # Save best model for early stopping
-        if best_validation_loss > val_loss:
-            print(f'{val_loss} < {best_validation_loss}... saving as new best_model.pt')
-            best_validation_loss = val_loss
-            torch.save(net, model_path)
 
     progress_bar.close()
     print('finished training')
