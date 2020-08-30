@@ -92,13 +92,13 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
 
             # plot output
             if update % plot_at == 0 and update > 0:
-                plot_targets = targets.detach().numpy()
-                plot_predictions = predictions.detach().numpy()
+                plot_targets = targets.detach().cpu().numpy()
+                plot_predictions = predictions.detach().cpu().numpy()
                 utils.plot(plot_targets, plot_predictions, classes, plots_path, update)
             # compute metrics
             if update % metrics_at == 0 and update > 0:
-                metric_targets = targets.detach().numpy()
-                metric_predictions = predictions.detach().numpy()
+                metric_targets = targets.detach().cpu().numpy()
+                metric_predictions = predictions.detach().cpu().numpy()
                 utils.compute_metrics(metric_targets, metric_predictions, metrics_path, update)
 
             if update % stats_at == 0 and update > 0:
@@ -209,8 +209,8 @@ def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.D
             # loss += loss_fn(predictions, targets)
             loss += (torch.stack([loss_fn(pred, target) for pred, target in zip(predictions, targets)]).sum()
                      / len(dataloader.dataset))
-            file_targets.append(targets.detach().numpy())
-            file_predictions.append(predictions.detach().numpy())
+            file_targets.append(targets.detach().cpu().numpy())
+            file_predictions.append(predictions.detach().cpu().numpy())
     return loss, all_metrics
 
 
