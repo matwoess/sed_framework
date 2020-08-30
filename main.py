@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
+from datetime import datetime
+from typing import Tuple
 
 import torch
 import torch.utils.data
@@ -9,19 +11,18 @@ from torch.utils.tensorboard import SummaryWriter
 import tqdm
 
 from architectures import DorferCNN, SimpleCNN
-from datasets import BaseDataset, FeatureDataset
+from datasets import BaseDataset, ExcerptDataset
 import utils
 
 torch.random.manual_seed(0)  # Set a known random seed for reproducibility
 
 
-def evaluate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, device: torch.device,
+def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, device: torch.device,
                    loss_fn=torch.nn.BCELoss()) -> torch.Tensor:
     loss = torch.tensor(0., device=device)
     with torch.no_grad():
         for data in tqdm.tqdm(dataloader, desc='scoring', position=0):
-            inputs, targets, idx = data
-            inputs.unsqueeze_(1)
+            inputs, targets, _, idx = data
             inputs = inputs.to(device, dtype=torch.float32)
             targets = targets.to(device, dtype=torch.float32)
             predictions = net(inputs)
@@ -31,21 +32,29 @@ def evaluate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
     return loss
 
 
-def main(results_path: str, network_config: dict, eval_settings: dict, classes: list, scenes: list, feature_type: str,
+def main(network_config: dict, eval_settings: dict, classes: list, scenes: list, feature_type: str,
          learning_rate: int = 1e-3, weight_decay: float = 1e-4, n_updates: int = int(1e5), excerpt_size: int = 384,
          batch_size: int = 16, device: torch.device = torch.device("cuda:0"),
          ):
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
-    plots_path = os.path.join(results_path, 'plots')
-    metrics_path = os.path.join(results_path, 'metrics')
+    plots_path = os.path.join('results', 'itermediate', 'plots')
+    metrics_path = os.path.join('results', 'itermediate', 'metrics')
     os.makedirs(plots_path, exist_ok=True)
     os.makedirs(metrics_path, exist_ok=True)
-    writer = SummaryWriter(log_dir=os.path.join(results_path, 'tensorboard'))
+    time_string = datetime.now().strftime("%Y_%m_%d_%H_%M")
+    writer = SummaryWriter(log_dir=os.path.join('results', 'tensorboard', time_string))
     training_dataset = BaseDataset(scenes=scenes, features=feature_type)
 
     # Create Network
     network_config['out_features'] = len(classes)
     net = SimpleCNN(**network_config)
+    # Save initial model as "best" model (will be overwritten later)
+    model_path = os.path.join('results', f'best_{"_".join(scenes)}_{feature_type}_model.pt')
+    if not os.path.exists(model_path):
+        torch.save(net, model_path)
+    else:  # if there already exists a model load parameters
+        print(f'reusing pre-trained model: "{model_path}"')
+        net = torch.load(model_path)
     net.to(device)
     # Get loss function
     loss_fn = torch.nn.BCELoss()
@@ -56,11 +65,7 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
     metrics_at = eval_settings['metrics_at']
     best_validation_loss = np.inf  # best validation loss so far
     progress_bar = tqdm.tqdm(total=n_updates, desc=f"loss: {np.nan:7.5f}", position=0)
-
-    # Save initial model as "best" model (will be overwritten later)
-    torch.save(net, os.path.join(results_path, 'best_model.pt'))
     update = 0  # current update counter
-    fold_iteration = 0
     fold_idx = -1
 
     loss = torch.empty(0)
@@ -72,14 +77,13 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
         fold_idx = (fold_idx + 1) % 4
         train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[0])
         val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
-        train_set = FeatureDataset(train_set, classes, excerpt_size=excerpt_size)
-        val_set = FeatureDataset(val_set, classes, excerpt_size=excerpt_size)
+        train_set = ExcerptDataset(train_set, classes, excerpt_size=excerpt_size)
+        val_set = ExcerptDataset(val_set, classes, excerpt_size=excerpt_size)
         train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=False, num_workers=0)
         val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
 
         for data in train_loader:
-            inputs, targets, idx = data
-            inputs.unsqueeze_(1)
+            inputs, targets, _, idx = data
             inputs = inputs.to(device, dtype=torch.float32)
             targets = targets.to(device, dtype=torch.float32)
             optimizer.zero_grad()
@@ -111,7 +115,7 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
         # log training loss
         writer.add_scalar(tag="training/loss", scalar_value=loss.cpu(), global_step=update)
         # Evaluate model on validation set (after every complete training fold)
-        val_loss = evaluate_model(net, dataloader=val_loader, device=device)
+        val_loss = validate_model(net, dataloader=val_loader, device=device)
         writer.add_scalar(tag="validation/loss", scalar_value=val_loss, global_step=update)
         # Add weights to tensorboard
         for i, param in enumerate(net.parameters()):
@@ -123,46 +127,92 @@ def main(results_path: str, network_config: dict, eval_settings: dict, classes: 
         if best_validation_loss > val_loss:
             print(f'{val_loss} < {best_validation_loss}... saving as new best_model.pt')
             best_validation_loss = val_loss
-            torch.save(net, os.path.join(results_path, 'best_model.pt'))
-
-        fold_iteration += 1
+            torch.save(net, model_path)
 
     progress_bar.close()
     print('finished training')
 
+    final_evaluation(classes, excerpt_size, feature_type, model_path, scenes, training_dataset, device)
+    utils.zip_folder('results')
+
+
+def final_evaluation(classes: list, excerpt_size: int, feature_type: str, model_path: str, scenes: list,
+                     training_dataset: BaseDataset, device: torch.device) -> None:
     # final evaluation on best model
-    net = torch.load(os.path.join(results_path, 'best_model.pt'))
-    fold_idx = 0
+    net = torch.load(model_path)
+    dev_set = ExcerptDataset(training_dataset, classes, excerpt_size=excerpt_size)
+    dev_loader = DataLoader(dev_set, batch_size=1, shuffle=False, num_workers=0)
+    eval_set = BaseDataset(scenes=scenes, features=feature_type, data_path=os.path.join('data', 'eval'))
+    eval_set = ExcerptDataset(eval_set, classes, excerpt_size=excerpt_size)
+    eval_loader = DataLoader(eval_set, batch_size=1, shuffle=False, num_workers=0)
 
-    train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[0])
-    train_set = FeatureDataset(train_set, classes, excerpt_size=excerpt_size)
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=False, num_workers=0)
-
-    val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
-    val_set = FeatureDataset(val_set, classes, excerpt_size=excerpt_size)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
-
-    test_set = BaseDataset(scenes=scenes, features=feature_type, data_path=os.path.join('data', 'eval'))
-    test_set = FeatureDataset(test_set, classes, excerpt_size=excerpt_size)
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=0)
-
-    test_loss = evaluate_model(net, dataloader=test_loader, device=device)
-    val_loss = evaluate_model(net, dataloader=val_loader, device=device)
-    train_loss = evaluate_model(net, dataloader=train_loader, device=device)
+    eval_loss, eval_metrics = evaluate_model_on_files(net, dataloader=eval_loader, device=device, classes=classes)
+    dev_loss, dev_metrics = evaluate_model_on_files(net, dataloader=dev_loader, device=device, classes=classes)
 
     print(f"Scores:")
-    print(f"test loss: {test_loss}")
-    print(f"validation loss: {val_loss}")
-    print(f"training loss: {train_loss}")
-
+    print(f"evaluation set loss: {eval_loss}")
+    print(f"development set loss: {dev_loss}")
     # Write result to separate file
-    with open(os.path.join(results_path, 'losses.txt'), 'w') as f:
+    with open(os.path.join('results', 'losses.txt'), 'w') as f:
         print(f"Scores:", file=f)
-        print(f"test loss: {test_loss}", file=f)
-        print(f"validation loss: {val_loss}", file=f)
-        print(f"training loss: {train_loss}", file=f)
+        print(f"evaluation set loss: {eval_loss}", file=f)
+        print(f"development set loss: {dev_loss}", file=f)
 
-    utils.zip_folder(results_path)
+    def write_avg_metrics(metrics_list: list, name: str) -> None:
+        avg_metrics = {}
+        for key in metrics_list[0].keys():
+            val = 0
+            for m in metrics_list:
+                val += m.get(key, 0)
+            avg_metrics[key] = val / len(metrics_list)
+        save_path = os.path.join('results', 'final', 'metrics', f'{name}_average.txt')
+        with open(save_path, 'w') as f:
+            print(f"Average metrics over all files:", file=f)
+            for key in avg_metrics.keys():
+                print(f'{key}: {avg_metrics[key]}', file=f)
+
+    write_avg_metrics(eval_metrics, 'eval')
+    write_avg_metrics(dev_metrics, 'dev')
+
+
+def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, device: torch.device,
+                            classes: list, loss_fn=torch.nn.BCELoss()) -> Tuple[torch.Tensor, list]:
+    plot_path = os.path.join('results', 'final', 'plots')
+    metrics_path = os.path.join('results', 'final', 'metrics')
+    loss = torch.tensor(0., device=device)
+    all_metrics = []
+    file_targets = []
+    file_predictions = []
+    curr_file = None
+    with torch.no_grad():
+        for data in tqdm.tqdm(dataloader, desc='evaluating', position=0):
+            inputs, targets, audio_file, idx = data
+            audio_file = audio_file[0]
+            if curr_file is None:
+                curr_file = audio_file
+            elif audio_file != curr_file:
+                # combine all targets and predictions from current file
+                all_targets = np.concatenate(file_targets, axis=2)
+                all_predictions = np.concatenate(file_predictions, axis=2)
+                # plot and compute metrics
+                filename = os.path.split(curr_file)[-1]
+                utils.plot(all_targets, all_predictions, classes, plot_path, filename, to_seconds=True)
+                metrics = utils.compute_metrics(all_targets, all_predictions, metrics_path, filename)
+                all_metrics.append(metrics)
+                # set up variables for next file
+                curr_file = audio_file
+                file_targets.clear()
+                file_predictions.clear()
+
+            inputs = inputs.to(device, dtype=torch.float32)
+            targets = targets.to(device, dtype=torch.float32)
+            predictions = net(inputs)
+            # loss += loss_fn(predictions, targets)
+            loss += (torch.stack([loss_fn(pred, target) for pred, target in zip(predictions, targets)]).sum()
+                     / len(dataloader.dataset))
+            file_targets.append(targets.detach().numpy())
+            file_predictions.append(predictions.detach().numpy())
+    return loss, all_metrics
 
 
 if __name__ == '__main__':

@@ -1,8 +1,7 @@
 {
-  "results_path": "results",
   "device": "cpu",
   "learning_rate": 1e-2,
-  "weight_decay": 1e-3,
+  "weight_decay": 1e-4,
   "n_updates": 5e3,
   "classes": [
     "(object) banging",

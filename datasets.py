@@ -74,8 +74,10 @@ def create_dataset(data_path, dataset_file, scene, features_type, n_folds: int =
         audio, sr = librosa.load(file)
         if feature_type == 'spec':
             feature = np.abs(librosa.stft(audio, n_fft=n_fft, hop_length=hop_length))  # magnitudes only
+            feature = librosa.amplitude_to_db(np.abs(np.abs(feature)), ref=np.max)
         elif feature_type == 'mels':
             feature = librosa.feature.melspectrogram(y=audio, sr=sr, n_fft=n_fft, hop_length=hop_length)
+            feature = librosa.amplitude_to_db(np.abs(np.abs(feature)), ref=np.max)
         elif feature_type == 'mfccs':
             feature = librosa.feature.mfcc(audio, sr=sr)
         else:
@@ -191,12 +193,13 @@ def get_target_array(from_idx: int, to_idx: int, annotations: list, classes: lis
     return target_array
 
 
-class FeatureDataset(Dataset):
+class ExcerptDataset(Dataset):
     def __init__(self, dataset: Dataset, classes: list, excerpt_size: int = 384, hop_size=512):
         self.dataset = dataset
         total_len = 0
         features = []
         targets = []
+        file_names = []
         for feature, ann, sr, audio_file, _ in dataset:
             feature_count = feature.shape[0]
             sequence_positions = feature.shape[1]
@@ -209,9 +212,11 @@ class FeatureDataset(Dataset):
                 target_array = get_target_array(begin_idx, end_idx, ann, classes, i, excerpt_size, sr, hop_size)
                 features.append(excerpt)
                 targets.append(target_array)
+                file_names.append(audio_file)
             total_len += n_excerpts
         self.features = features
         self.targets = targets
+        self.file_names = file_names
         self.total_len = total_len
 
     def __len__(self):
@@ -222,6 +227,9 @@ class FeatureDataset(Dataset):
         feature = self.features[idx]
         mean = feature.mean()
         std = feature.std()
+        if std == 0:
+            std = 1  # in case std equals zero, do not divide by zero
         feature[:] -= mean
         feature[:] /= std
-        return feature, self.targets[idx], idx
+        feature = np.expand_dims(feature, axis=0)
+        return feature, self.targets[idx], self.file_names[idx], idx
