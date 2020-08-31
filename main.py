@@ -26,9 +26,9 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
             inputs = inputs.to(device, dtype=torch.float32)
             targets = targets.to(device, dtype=torch.float32)
             predictions = net(inputs)
-            # loss += loss_fn(predictions, targets)
-            loss += (torch.stack([loss_fn(pred, target) for pred, target in zip(predictions, targets)]).sum()
-                     / len(dataloader.dataset))
+            loss += loss_fn(predictions, targets)
+            # loss += (torch.stack([loss_fn(pred, target) for pred, target in zip(predictions, targets)]).sum()
+            #          / len(dataloader.dataset))
     return loss
 
 
@@ -131,6 +131,10 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
     progress_bar.close()
     print('finished training')
 
+    # Save final net as best (as by now validation loss keeps going up) TODO: remove
+    print('saving final model as best model, TODO:remove')
+    torch.save(net, model_path)
+
     final_evaluation(classes, excerpt_size, feature_type, model_path, scenes, training_dataset, device)
     utils.zip_folder('results')
 
@@ -145,8 +149,8 @@ def final_evaluation(classes: list, excerpt_size: int, feature_type: str, model_
     eval_set = ExcerptDataset(eval_set, classes, excerpt_size=excerpt_size)
     eval_loader = DataLoader(eval_set, batch_size=1, shuffle=False, num_workers=0)
 
-    eval_loss, eval_metrics = evaluate_model_on_files(net, dataloader=eval_loader, device=device, classes=classes)
-    dev_loss, dev_metrics = evaluate_model_on_files(net, dataloader=dev_loader, device=device, classes=classes)
+    eval_loss, eval_metrics, eval_pp_metrics = evaluate_model_on_files(net, eval_loader, classes, device=device)
+    dev_loss, dev_metrics, dev_pp_metrics = evaluate_model_on_files(net, dev_loader, classes, device=device)
 
     print(f"Scores:")
     print(f"evaluation set loss: {eval_loss}")
@@ -157,14 +161,14 @@ def final_evaluation(classes: list, excerpt_size: int, feature_type: str, model_
         print(f"evaluation set loss: {eval_loss}", file=f)
         print(f"development set loss: {dev_loss}", file=f)
 
-    def write_avg_metrics(metrics_list: list, name: str) -> None:
+    def write_avg_metrics(metrics_list: list, name: str, sub_folder='final') -> None:
         avg_metrics = {}
         for key in metrics_list[0].keys():
             val = 0
             for m in metrics_list:
                 val += m.get(key, 0)
             avg_metrics[key] = val / len(metrics_list)
-        save_path = os.path.join('results', 'final', 'metrics', f'{name}_average.txt')
+        save_path = os.path.join('results', sub_folder, 'metrics', f'{name}_average.txt')
         with open(save_path, 'w') as f:
             print(f"Average metrics over all files:", file=f)
             for key in avg_metrics.keys():
@@ -172,14 +176,19 @@ def final_evaluation(classes: list, excerpt_size: int, feature_type: str, model_
 
     write_avg_metrics(eval_metrics, 'eval')
     write_avg_metrics(dev_metrics, 'dev')
+    write_avg_metrics(eval_pp_metrics, 'eval', sub_folder='final_post_processed')
+    write_avg_metrics(dev_pp_metrics, 'dev', sub_folder='final_post_processed')
 
 
-def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, device: torch.device,
-                            classes: list, loss_fn=torch.nn.BCELoss()) -> Tuple[torch.Tensor, list]:
+def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, classes: list,
+                            device: torch.device, loss_fn=torch.nn.BCELoss()) -> Tuple[torch.Tensor, list, list]:
     plot_path = os.path.join('results', 'final', 'plots')
+    plot_pp_path = os.path.join('results', 'final_post_processed', 'plots')
     metrics_path = os.path.join('results', 'final', 'metrics')
+    metrics_pp_path = os.path.join('results', 'final_post_processed', 'metrics')
     loss = torch.tensor(0., device=device)
     all_metrics = []
+    all_pp_metrics = []
     file_targets = []
     file_predictions = []
     curr_file = None
@@ -195,9 +204,12 @@ def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.D
                 all_predictions = np.concatenate(file_predictions, axis=2)
                 # plot and compute metrics
                 filename = os.path.split(curr_file)[-1]
-                utils.plot(all_targets, all_predictions, classes, plot_path, filename, to_seconds=True)
-                metrics = utils.compute_metrics(all_targets, all_predictions, metrics_path, filename)
+                utils.plot(all_targets, all_predictions, classes, plot_path, filename, False, to_seconds=True)
+                utils.plot(all_targets, all_predictions, classes, plot_pp_path, filename, True, to_seconds=True)
+                metrics = utils.compute_metrics(all_targets, all_predictions, metrics_path, filename, False)
+                metrics_pp = utils.compute_metrics(all_targets, all_predictions, metrics_pp_path, filename, True)
                 all_metrics.append(metrics)
+                all_pp_metrics.append(metrics_pp)
                 # set up variables for next file
                 curr_file = audio_file
                 file_targets.clear()
@@ -211,7 +223,7 @@ def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.D
                      / len(dataloader.dataset))
             file_targets.append(targets.detach().cpu().numpy())
             file_predictions.append(predictions.detach().cpu().numpy())
-    return loss, all_metrics
+    return loss, all_metrics, all_pp_metrics
 
 
 if __name__ == '__main__':

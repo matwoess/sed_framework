@@ -7,9 +7,11 @@ import numpy as np
 import requests
 import tqdm
 from matplotlib import pyplot as plt
+from scipy.ndimage import median_filter
 
 
-def plot(targets: np.ndarray, predictions: np.ndarray, classes: list, path: str, identifier, to_seconds=False) -> None:
+def plot(targets: np.ndarray, predictions: np.ndarray, classes: list, path: str, identifier,
+         post_process=False, to_seconds=False) -> None:
     print('plotting results...')
     os.makedirs(path, exist_ok=True)
     cmap = ['b', 'r', 'g', 'y', 'k', 'c', 'm']
@@ -17,6 +19,8 @@ def plot(targets: np.ndarray, predictions: np.ndarray, classes: list, path: str,
     # compute errors
     threshold = 0.5
     thresh_predictions = np.where(predictions >= threshold, 1, 0)
+    if post_process:
+        thresh_predictions = median_filter_predictions(thresh_predictions, frame_size=10)
     errors = thresh_predictions != targets
     # create subplots for targets, predictions and errors
     to_plot = [targets, thresh_predictions, errors]
@@ -50,15 +54,18 @@ def plot(targets: np.ndarray, predictions: np.ndarray, classes: list, path: str,
         plt.close(fig)
 
 
-def compute_metrics(targets: np.ndarray, predictions: np.ndarray, path: str, identifier) -> Dict:
+def compute_metrics(targets: np.ndarray, predictions: np.ndarray, path: str, identifier, post_process=False) -> Dict:
     print('computing metrics...')
     os.makedirs(path, exist_ok=True)
     targets = targets == 1
     targets = targets.reshape(-1)
     n_samples = len(targets)
     threshold = 0.5
-    predictions = predictions.reshape(-1)
-    predictions = [b for b in predictions >= threshold]
+    thresh_predictions = np.where(predictions >= threshold, 1, 0)
+    if post_process:
+        thresh_predictions = median_filter_predictions(thresh_predictions, frame_size=10)
+    predictions = thresh_predictions.reshape(-1)
+    predictions = [b for b in predictions == 1]
     if not np.any(targets):
         print('no positive targets, aborting...')
         return {}
@@ -149,6 +156,13 @@ def zip_folder(folder):
     archive.close()
 
 
+def median_filter_predictions(array: np.ndarray, frame_size: int = 10) -> np.ndarray:
+    n_dimensions = len(array.shape)
+    filter_shape = (*np.ones(n_dimensions - 1, dtype=np.int), frame_size)
+    result = median_filter(array, size=filter_shape)
+    return result
+
+
 if __name__ == '__main__':
     # download_dataset()
     np.random.seed(0)
@@ -159,5 +173,6 @@ if __name__ == '__main__':
     test_path = 'results/plots'
     test_update = 1
     # plot(test_targets, test_predictions, test_classes, test_path, test_update)
+    # plot(test_targets, test_predictions, test_classes, test_path, test_update + 1, post_process=True)
     # compute_metrics(test_targets, test_predictions, 'results/metrics', test_update)
     # zip_folder('results')
