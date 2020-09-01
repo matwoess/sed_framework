@@ -53,9 +53,9 @@ def final_evaluation(classes: list, excerpt_size: int, feature_type: str, model_
 def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, classes: list,
                             device: torch.device, loss_fn=torch.nn.BCELoss()) -> Tuple[torch.Tensor, list, list]:
     plot_path = os.path.join('results', 'final', 'plots')
-    plot_pp_path = os.path.join('results', 'final_post_processed', 'plots')
     metrics_path = os.path.join('results', 'final', 'metrics')
-    metrics_pp_path = os.path.join('results', 'final_post_processed', 'metrics')
+    plot_pp_path = os.path.join('results', 'final_pp', 'plots')
+    metrics_pp_path = os.path.join('results', 'final_pp', 'metrics')
     loss = torch.tensor(0., device=device)
     all_metrics = []
     all_pp_metrics = []
