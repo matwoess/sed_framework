@@ -28,8 +28,7 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
             targets = targets.to(device, dtype=torch.float32)
             predictions = net(inputs)
             loss += loss_fn(predictions, targets)
-            # loss += (torch.stack([loss_fn(pred, target) for pred, target in zip(predictions, targets)]).sum()
-            #          / len(dataloader.dataset))
+        loss /= len(dataloader)
     return loss
 
 
@@ -55,7 +54,7 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
         torch.save(net, model_path)
     else:  # if there already exists a model load parameters
         print(f'reusing pre-trained model: "{model_path}"')
-        net = torch.load(model_path)
+        net = torch.load(model_path, map_location=torch.device('cpu'))
     net.to(device)
     # Get loss function
     loss_fn = torch.nn.BCELoss()
@@ -75,7 +74,7 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
     val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
     train_set = ExcerptDataset(train_set, classes, excerpt_size=excerpt_size)
     val_set = ExcerptDataset(val_set, classes, excerpt_size=excerpt_size)
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
 
     while update <= n_updates:

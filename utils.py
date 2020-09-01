@@ -10,6 +10,13 @@ from matplotlib import pyplot as plt
 from scipy.ndimage import median_filter
 
 
+def median_filter_predictions(array: np.ndarray, frame_size: int = 10) -> np.ndarray:
+    n_dimensions = len(array.shape)
+    filter_shape = (*np.ones(n_dimensions - 1, dtype=np.int), frame_size)
+    result = median_filter(array, size=filter_shape)
+    return result
+
+
 def plot(targets: np.ndarray, predictions: np.ndarray, classes: list, path: str, identifier,
          post_process=False, to_seconds=False) -> None:
     print('plotting results...')
@@ -154,13 +161,6 @@ def zip_folder(folder):
         for file in files:
             archive.write(os.path.join(root, file))
     archive.close()
-
-
-def median_filter_predictions(array: np.ndarray, frame_size: int = 10) -> np.ndarray:
-    n_dimensions = len(array.shape)
-    filter_shape = (*np.ones(n_dimensions - 1, dtype=np.int), frame_size)
-    result = median_filter(array, size=filter_shape)
-    return result
 
 
 if __name__ == '__main__':

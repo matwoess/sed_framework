@@ -1,7 +1,7 @@
 {
   "device": "cpu",
-  "learning_rate": 1e-2,
-  "weight_decay": 1e-4,
+  "learning_rate": 1e-3,
+  "weight_decay": 1e-5,
   "n_updates": 5e3,
   "classes": [
     "(object) rustling",
@@ -22,7 +22,7 @@
   "scenes": ["home"],
   "network_config": {
     "in_channels": 1,
-    "n_kernels": 32
+    "n_kernels": 64
   },
   "eval_settings": {
     "stats_at": 5e1,
