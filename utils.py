@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
 import zipfile
-from typing import Dict
 
 import numpy as np
 import requests
@@ -59,54 +58,6 @@ def plot(targets: np.ndarray, predictions: np.ndarray, classes: list, path: str,
             save_path = os.path.join(path, f'{identifier}.png')
         fig.savefig(save_path, dpi=500)
         plt.close(fig)
-
-
-def compute_metrics(targets: np.ndarray, predictions: np.ndarray, path: str, identifier, post_process=False) -> Dict:
-    print('computing metrics...')
-    os.makedirs(path, exist_ok=True)
-    targets = targets == 1
-    targets = targets.reshape(-1)
-    n_samples = len(targets)
-    threshold = 0.5
-    thresh_predictions = np.where(predictions >= threshold, 1, 0)
-    if post_process:
-        thresh_predictions = median_filter_predictions(thresh_predictions, frame_size=10)
-    predictions = thresh_predictions.reshape(-1)
-    predictions = [b for b in predictions == 1]
-    if not np.any(targets):
-        print('no positive targets, aborting...')
-        return {}
-    if not np.any(predictions):
-        print('no positive predictions, aborting...')
-        return {}
-    tp = sum([1 for p, t in zip(predictions, targets) if t and p])
-    tn = sum([1 for p, t in zip(predictions, targets) if not t and not p])
-    fp = sum([1 for p, t in zip(predictions, targets) if not t and p])
-    fn = sum([1 for p, t in zip(predictions, targets) if t and not p])
-    assert tp + tn + fp + fn == n_samples
-    P = tp + fn
-    N = tn + fp
-    tpr = 1.0 if P == 0 else tp / P
-    tnr = 1.0 if N == 0 else tn / N
-    fpr = 1 - tnr
-    fnr = 1 - tpr
-    ppr = tp / (tp + fp)
-    acc = (tp + tn) / n_samples
-    bacc = (tpr + tnr) / 2
-    f1score = 0.0 if tpr + ppr == 0 else 2 * (tpr * ppr) / (tpr + ppr)
-    metrics = {'F1-score': f1score, 'error rate / false negative rate': fnr,
-               'accuracy': acc, 'balanced accuracy': bacc,
-               'recall / true positive rate': tpr, 'precision / positive predictive rate': ppr,
-               'fall-out / false positive rate': fpr, 'true negative rate': tnr}
-    if type(identifier) == int:
-        save_path = os.path.join(path, f"{identifier:07d}.txt")
-    else:
-        save_path = os.path.join(path, f'{identifier}.txt')
-    with open(save_path, 'w') as f:
-        print(f"Metrics:", file=f)
-        for key in metrics.keys():
-            print(f'{key}: {metrics[key]}', file=f)
-    return metrics
 
 
 def download_url(url, save_path, description, chunk_size=4096):
@@ -174,5 +125,4 @@ if __name__ == '__main__':
     test_update = 1
     # plot(test_targets, test_predictions, test_classes, test_path, test_update)
     # plot(test_targets, test_predictions, test_classes, test_path, test_update + 1, post_process=True)
-    # compute_metrics(test_targets, test_predictions, 'results/metrics', test_update)
     # zip_folder('results')

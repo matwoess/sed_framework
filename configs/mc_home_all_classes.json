@@ -1,6 +1,6 @@
 {
   "device": "cpu",
-  "learning_rate": 1e-3,
+  "learning_rate": 1e-4,
   "weight_decay": 1e-5,
   "n_updates": 5e3,
   "classes": [
@@ -25,9 +25,7 @@
     "n_kernels": 64
   },
   "eval_settings": {
-    "stats_at": 5e1,
-    "validate_at": 1e2,
-    "plot_at": 5e2,
-    "metrics_at": 5e2
+    "train_stats_at": 1e2,
+    "validate_at": 1e2
   }
 }

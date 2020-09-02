@@ -30,12 +30,8 @@ def final_evaluation(classes: list, excerpt_size: int, feature_type: str, model_
 
     eval_loss, eval_metrics, eval_pp_metrics = evaluate_model_on_files(net, eval_loader, classes, device=device)
     dev_loss, dev_metrics, dev_pp_metrics = evaluate_model_on_files(net, dev_loader, classes, device=device)
-
-    print(f"Scores:")
-    print(f"evaluation set loss: {eval_loss}")
-    print(f"development set loss: {dev_loss}")
     # Write result to separate file
-    with open(os.path.join('results', 'losses.txt'), 'w') as f:
+    with open(os.path.join('results', 'final_losses.txt'), 'w') as f:
         print(f"Scores:", file=f)
         print(f"evaluation set loss: {eval_loss}", file=f)
         print(f"development set loss: {dev_loss}", file=f)
@@ -174,8 +170,11 @@ def compute_dcase_metrics(targets: np.ndarray, predictions: np.ndarray, classes:
     # create metric classes and get lists
     dcase2013metric = DCASE2013_EventDetection_Metrics(class_list=classes)
     dcase2016_metric = DCASE2016_EventDetection_SegmentBasedMetrics(class_list=classes)
-    system_output = get_event_list(predictions[0, ...], classes)
-    annotated_groundtruth = get_event_list(targets[0, ...], classes)
+    if len(targets.shape) == 3:  # concatenate batches
+        predictions = np.concatenate([*predictions], axis=1)
+        targets = np.concatenate([*targets], axis=1)
+    system_output = get_event_list(predictions, classes)
+    annotated_groundtruth = get_event_list(targets, classes)
     # get dcase metrics
     frame_based_metrics = dcase2013metric.frame_based(annotated_groundtruth, system_output)
     even_based_metrics = dcase2013metric.event_based(annotated_groundtruth, system_output)
