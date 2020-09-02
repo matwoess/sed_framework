@@ -22,6 +22,6 @@
   },
   "eval_settings": {
     "train_stats_at": 1e2,
-    "validate_at": 1e2
+    "validate_at": 5e2
   }
 }

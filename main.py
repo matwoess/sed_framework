@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import random
 from datetime import datetime
 from typing import Tuple, Iterator
 
@@ -41,15 +42,20 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
             # plot results
             target_array = targets.detach().cpu().numpy()
             prediction_array = predictions.detach().cpu().numpy()
-            utils.plot(target_array, prediction_array, classes, plots_path, update)
             target_list.extend([*target_array])
             prediction_list.extend([*prediction_array])
         loss /= len(dataloader)
+        # pick some excerpts and plot them
+        num_plots = 3
+        indices = random.choices(np.arange(len(target_list)), k=num_plots)
+        targets = np.stack([t for i, t in enumerate(target_list) if i in indices])
+        predictions = np.stack([t for i, t in enumerate(prediction_list) if i in indices])
+        utils.plot(targets, predictions, classes, plots_path, update)
         # compute dcase metrics
-        metric_targets = np.stack(target_list)
-        metric_predictions = np.stack(prediction_list)
-        metrics = evaluation.compute_dcase_metrics(metric_targets, metric_predictions, classes)
-        metrics_pp = evaluation.compute_dcase_metrics(metric_targets, metric_predictions, classes, post_process=True)
+        targets = np.stack(target_list)
+        predictions = np.stack(prediction_list)
+        metrics = evaluation.compute_dcase_metrics(targets, predictions, classes)
+        metrics_pp = evaluation.compute_dcase_metrics(targets, predictions, classes, post_process=True)
         evaluation.write_dcase_metrics_to_file(metrics, metrics_path, f"{update:07d}.txt")
         evaluation.write_dcase_metrics_to_file(metrics_pp, metrics_path, f"{update:07d}_pp.txt")
     return loss, metrics, metrics_pp
@@ -116,7 +122,7 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
                 log_validation_params(writer, val_loss, params, metrics, metrics_pp, update)
                 # Save best model for early stopping
                 if best_validation_loss > val_loss:
-                    print(f'{val_loss} < {best_validation_loss}... saving as new best_model.pt')
+                    print(f'{val_loss} < {best_validation_loss}... saving as new {os.path.split(model_path)[-1]}')
                     best_validation_loss = val_loss
                     torch.save(net, model_path)
 
