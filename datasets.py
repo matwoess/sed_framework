@@ -10,106 +10,105 @@ import dill as pickle
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
+import augment
 import utils
 
 
-def read_annotations(meta_path):
-    annotations = []
-    annotation_files = sorted(glob.glob(os.path.join(meta_path, '**/*.ann'), recursive=True))
-    for annotation_file in annotation_files:
-        with open(annotation_file, 'r') as af:
-            content = list(csv.reader(af, delimiter='\t'))
-        file_annotations = []
-        for row in content:
-            file_annotations.append({'onset': row[0], 'offset': row[1], 'event': row[2]})
-        annotations.append(file_annotations)
-    return annotations
-
-
-def get_folds(data_path: str, scene: str, num_folds: int = 4):
-    folds = []
-    for i in range(1, num_folds + 1):
-        train_fold = os.path.join(data_path, 'evaluation_setup', f'{scene}_fold{i}_train.txt')
-        test_fold = os.path.join(data_path, 'evaluation_setup', f'{scene}_fold{i}_test.txt')
-        with open(train_fold, 'r') as f:
-            content = list(csv.reader(f, delimiter='\t'))
-        train_files = list(set([row[0] for row in content]))
-        with open(test_fold, 'r') as f:
-            content = list(csv.reader(f, delimiter='\t'))
-        val_files = list(set([row[0] for row in content]))
-        train_files = [os.path.join(data_path, f) for f in train_files]
-        val_files = [os.path.join(data_path, f) for f in val_files]
-        folds.append({'fold': i, 'train_files': train_files, 'val_files': val_files})
-    return folds
-
-
-def get_fold_indices(audio_files, folds):
-    fold_indices = []
-    for fold in folds:
-        train_indices, val_indices = [], []
-        for file in fold['train_files']:
-            train_indices.append(audio_files.index(file))
-        for file in fold['val_files']:
-            val_indices.append(audio_files.index(file))
-        fold_indices.append((train_indices, val_indices))
-    return fold_indices
-
-
-def create_dataset(data_path, dataset_file, scene, features_type, n_folds: int = 4, n_fft=1024, hop_length=512):
-    scene_audio_path = os.path.join(data_path, 'audio', scene)
-    audio_files = sorted(glob.glob(os.path.join(scene_audio_path, '**/*.wav'), recursive=True))
-    meta_path = os.path.join(data_path, 'meta', scene)
-    annotations = read_annotations(meta_path)
-    if n_folds > 0:
-        folds = get_folds(data_path, scene, num_folds=n_folds)
-        fold_indices = get_fold_indices(audio_files, folds)
-    else:
-        fold_indices = []
-    feature_type = features_type
-
-    features = []
-    sampling_rates = []
-    desc = f'creating {scene} dataset with {features_type}'
-    for i, file in tqdm(enumerate(audio_files), desc=desc, total=len(audio_files)):
-        audio, sr = librosa.load(file)
-        if feature_type == 'spec':
-            feature = np.abs(librosa.stft(audio, n_fft=n_fft, hop_length=hop_length))  # magnitudes only
-            feature = librosa.amplitude_to_db(np.abs(np.abs(feature)), ref=np.max)
-        elif feature_type == 'mels':
-            feature = librosa.feature.melspectrogram(y=audio, sr=sr, n_fft=n_fft, hop_length=hop_length)
-            feature = librosa.amplitude_to_db(np.abs(np.abs(feature)), ref=np.max)
-        elif feature_type == 'mfccs':
-            feature = librosa.feature.mfcc(audio, sr=sr)
-        else:
-            raise ValueError(f'specified feature extraction "{feature_type}" is not supported.')
-        features.append(feature)
-        sampling_rates.append(sr)
-
-    data = {'features': features, 'annotations': annotations, 'sampling_rates': sampling_rates,
-            'audio_files': audio_files, 'fold_indices': fold_indices}
-    with open(dataset_file, 'wb') as f:
-        pickle.dump(data, f)
-    return data
-
-
 class SceneDataset(Dataset):
-    def __init__(self, scene: str, features_type: str, data_path: os.path.join('data', 'dev'),
-                 n_fft=1024, hop_length=512):
+    def __init__(self, scene: str, feature_type: str, data_path: os.path.join('data', 'dev'), rnd_augment: bool = False,
+                 n_fft: int = 1024, hop_length: int = 512, n_mfcc: int = 64):
         self.scene = scene
-        self.feature_type = features_type
-        n_folds = 4 if 'dev' in data_path else 0
-        dataset_file = os.path.join(data_path, f'{scene}_{features_type}.pkl')
+        self.feature_type = feature_type
+        self.data_path = data_path
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.n_mfcc = n_mfcc
+        self.n_folds = 4 if 'dev' in data_path else 0
+        self.rnd_augment = rnd_augment
+
+        dataset_file = os.path.join(data_path, f'{scene}_spectrograms.pkl')
         if not os.path.exists(dataset_file):
-            data = create_dataset(data_path, dataset_file, scene, features_type, n_folds, n_fft, hop_length)
+            data = self.create_dataset(dataset_file)
         else:
             with open(dataset_file, 'rb') as f:
                 data = pickle.load(f)
             print(f'loaded dataset from {dataset_file}')
+
         self.features = data['features']
         self.annotations = data['annotations']
         self.sampling_rates = data['sampling_rates']
         self.audio_files = data['audio_files']
         self.fold_indices = data['fold_indices']
+
+    def create_dataset(self, dataset_file):
+        scene_audio_path = os.path.join(self.data_path, 'audio', self.scene)
+        audio_files = sorted(glob.glob(os.path.join(scene_audio_path, '**/*.wav'), recursive=True))
+        meta_path = os.path.join(self.data_path, 'meta', self.scene)
+        annotations = self.read_annotations(meta_path)
+        if self.n_folds > 0:
+            folds = self.get_folds(self.data_path, self.scene, num_folds=self.n_folds)
+            fold_indices = self.get_fold_indices(audio_files, folds)
+        else:
+            fold_indices = []
+
+        features = []
+        sampling_rates = []
+        desc = f'pre-computing spectrograms for {self.scene} dataset'
+        for i, file in tqdm(enumerate(audio_files), desc=desc, total=len(audio_files)):
+            audio, sr = librosa.load(file)
+            feature = np.abs(librosa.stft(audio, n_fft=self.n_fft, hop_length=self.hop_length))  # TODO:**2?
+            features.append(feature)
+            sampling_rates.append(sr)
+
+        data = {'features': features, 'annotations': annotations, 'sampling_rates': sampling_rates,
+                'audio_files': audio_files, 'fold_indices': fold_indices}
+        with open(dataset_file, 'wb') as f:
+            pickle.dump(data, f)
+        return data
+
+    @staticmethod
+    def get_fold_indices(audio_files, folds):
+        fold_indices = []
+        for fold in folds:
+            train_indices, val_indices = [], []
+            for file in fold['train_files']:
+                train_indices.append(audio_files.index(file))
+            for file in fold['val_files']:
+                val_indices.append(audio_files.index(file))
+            train_indices.sort()
+            val_indices.sort()
+            fold_indices.append((train_indices, val_indices))
+        return fold_indices
+
+    @staticmethod
+    def read_annotations(meta_path):
+        annotations = []
+        annotation_files = sorted(glob.glob(os.path.join(meta_path, '**/*.ann'), recursive=True))
+        for annotation_file in annotation_files:
+            with open(annotation_file, 'r') as af:
+                content = list(csv.reader(af, delimiter='\t'))
+            file_annotations = []
+            for row in content:
+                file_annotations.append({'onset': row[0], 'offset': row[1], 'event': row[2]})
+            annotations.append(file_annotations)
+        return annotations
+
+    @staticmethod
+    def get_folds(data_path: str, scene: str, num_folds: int = 4):
+        folds = []
+        for i in range(1, num_folds + 1):
+            train_fold = os.path.join(data_path, 'evaluation_setup', f'{scene}_fold{i}_train.txt')
+            test_fold = os.path.join(data_path, 'evaluation_setup', f'{scene}_fold{i}_test.txt')
+            with open(train_fold, 'r') as f:
+                content = list(csv.reader(f, delimiter='\t'))
+            train_files = list(set([row[0] for row in content]))
+            with open(test_fold, 'r') as f:
+                content = list(csv.reader(f, delimiter='\t'))
+            val_files = list(set([row[0] for row in content]))
+            train_files = [os.path.join(data_path, f) for f in train_files]
+            val_files = [os.path.join(data_path, f) for f in val_files]
+            folds.append({'fold': i, 'train_files': train_files, 'val_files': val_files})
+        return folds
 
     def __len__(self):
         return len(self.audio_files)
@@ -119,19 +118,29 @@ class SceneDataset(Dataset):
         ann = self.annotations[idx]
         sr = self.sampling_rates[idx]
         audio_file = self.audio_files[idx]
+        if self.feature_type in ['mels', 'mfccs']:
+            mel_basis = librosa.filters.mel(sr=sr, n_fft=self.n_fft)
+            feature = np.dot(mel_basis, feature)
+        feature = librosa.amplitude_to_db(feature, ref=np.max)
+        if self.feature_type == 'mfccs':
+            feature = librosa.feature.mfcc(S=feature, n_mfcc=self.n_mfcc)
+
         return feature, ann, sr, audio_file, idx
 
 
 class BaseDataset(Dataset):
-    def __init__(self, scenes: List[str], features: str, data_path: str = os.path.join('data', 'dev'),
-                 n_fft=1024, hop_length=512):
+    def __init__(self, scenes: List[str], feature_type: str, data_path: str = os.path.join('data', 'dev'),
+                 n_fft: int = 1024, hop_length: int = 512, rnd_augment=False):
         if not os.path.exists(data_path):
             utils.download_dataset()
-            # raise ValueError(f'dataset path "{data_path}" does not exist')
         self.data_path = data_path
-        self.home_dataset = SceneDataset('home', features, data_path, n_fft, hop_length) if 'home' in scenes else None
-        self.residential_dataset = SceneDataset('residential_area', features, data_path, n_fft,
-                                                hop_length) if 'residential_area' in scenes else None
+        self.home_dataset = None
+        self.residential_dataset = None
+        if 'home' in scenes:
+            self.home_dataset = SceneDataset('home', feature_type, data_path, rnd_augment, n_fft, hop_length)
+        if 'residential_area' in scenes:
+            self.residential_dataset = SceneDataset('residential_area', feature_type, data_path, rnd_augment, n_fft,
+                                                    hop_length)
 
     def get_fold_indices(self, scenes: list, fold_idx) -> Tuple[list, list]:
         train = []
@@ -194,8 +203,9 @@ def get_target_array(from_idx: int, to_idx: int, annotations: list, classes: lis
 
 
 class ExcerptDataset(Dataset):
-    def __init__(self, dataset: Dataset, classes: list, excerpt_size: int = 384, hop_size=512):
+    def __init__(self, dataset: Dataset, classes: list, excerpt_size: int = 384, hop_size=512, rnd_augment=False):
         self.dataset = dataset
+        self.rnd_augment = rnd_augment
         total_len = 0
         features = []
         targets = []
@@ -225,11 +235,8 @@ class ExcerptDataset(Dataset):
     def __getitem__(self, idx):
         # nomalize inputs
         feature = self.features[idx]
-        mean = feature.mean()
-        std = feature.std()
-        if std == 0:
-            std = 1  # in case std equals zero, do not divide by zero
-        feature[:] -= mean
-        feature[:] /= std
+        if self.rnd_augment:
+            feature = augment.apply_random_augmentations(feature)
+        feature = augment.apply_normalization(feature)
         feature = np.expand_dims(feature, axis=0)
         return feature, self.targets[idx], self.file_names[idx], idx

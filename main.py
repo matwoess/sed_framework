@@ -61,20 +61,20 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
     return loss, metrics, metrics_pp
 
 
-def main(network_config: dict, eval_settings: dict, classes: list, scenes: list, feature_type: str,
-         learning_rate: int = 1e-3, weight_decay: float = 1e-4, n_updates: int = int(1e5), excerpt_size: int = 384,
-         batch_size: int = 16, device: torch.device = torch.device("cuda:0"),
-         ):
+def main(hyper_params: dict, network_config: dict, eval_settings: dict, classes: list, scenes: list,
+         device: torch.device = torch.device("cuda:0")):
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
-    time_string = datetime.now().strftime("%Y_%m_%d_%H_%M")
+    time_string = datetime.now().strftime("%Y%m%d-%H%M%S")
+    time_string += f' - {" - ".join(scenes)}'
     writer = SummaryWriter(log_dir=os.path.join('results', 'tensorboard', time_string))
-    training_dataset = BaseDataset(scenes=scenes, features=feature_type)
+    training_dataset = BaseDataset(scenes=scenes, feature_type=hyper_params['feature_type'])
+    validation_dataset = BaseDataset(scenes=scenes, feature_type=hyper_params['feature_type'])
 
     # Create Network
     network_config['out_features'] = len(classes)
     net = SimpleCNN(**network_config)
     # Save initial model as "best" model (will be overwritten later)
-    model_path = os.path.join('results', f'best_{"_".join(scenes)}_{feature_type}_model.pt')
+    model_path = os.path.join('results', f'best_{"_".join(scenes)}_{hyper_params["feature_type"]}_model.pt')
     if not os.path.exists(model_path):
         torch.save(net, model_path)
     else:  # if there already exists a model load parameters
@@ -84,22 +84,25 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
     # Get loss function
     loss_fn = torch.nn.BCELoss()
     # Get adam optimizer
-    optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    optimizer = torch.optim.Adam(net.parameters(), lr=hyper_params['learning_rate'],
+                                 weight_decay=hyper_params['weight_decay'])
 
     train_stats_at = eval_settings['train_stats_at']
     validate_at = eval_settings['validate_at']
     best_validation_loss = np.inf  # best validation loss so far
-    progress_bar = tqdm.tqdm(total=n_updates, desc=f"loss: {np.nan:7.5f}", position=0)
+    best_f_score = 0
+    progress_bar = tqdm.tqdm(total=hyper_params['n_updates'], desc=f"loss: {np.nan:7.5f}", position=0)
     update = 0  # current update counter
 
     fold_idx = 0
     train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[0])
-    val_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
-    train_set = ExcerptDataset(train_set, classes, excerpt_size=excerpt_size)
-    val_set = ExcerptDataset(val_set, classes, excerpt_size=excerpt_size)
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
+    val_set = Subset(validation_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
+    train_set = ExcerptDataset(train_set, classes, excerpt_size=hyper_params['excerpt_size'], rnd_augment=True)
+    val_set = ExcerptDataset(val_set, classes, excerpt_size=hyper_params['excerpt_size'])
+    train_loader = DataLoader(train_set, batch_size=hyper_params['batch_size'], shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_set, batch_size=hyper_params['batch_size'], shuffle=False, num_workers=0)
 
+    n_updates = hyper_params['n_updates']
     while update <= n_updates:
         for data in train_loader:
             inputs, targets, _, idx = data
@@ -118,12 +121,15 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
             if update % validate_at == 0 and update > 0:
                 # Evaluate model on validation set (after every complete training fold)
                 val_loss, metrics, metrics_pp = validate_model(net, val_loader, classes, update, device)
+                print(f'val_loss: {val_loss}')
                 params = net.parameters()
-                log_validation_params(writer, val_loss, params, metrics, metrics_pp, update)
+                f_score, err_rate = log_validation_params(writer, val_loss, params, metrics, metrics_pp, update)
+                print(f'f_score: {f_score}')
+                print(f'err_rate: {err_rate}')
                 # Save best model for early stopping
-                if best_validation_loss > val_loss:
-                    print(f'{val_loss} < {best_validation_loss}... saving as new {os.path.split(model_path)[-1]}')
-                    best_validation_loss = val_loss
+                if f_score > best_f_score:
+                    print(f'{f_score} > {best_f_score}... saving as new {os.path.split(model_path)[-1]}')
+                    best_f_score = f_score
                     torch.save(net, model_path)
 
             # update progress and update-counter
@@ -137,13 +143,14 @@ def main(network_config: dict, eval_settings: dict, classes: list, scenes: list,
     print('finished training.')
 
     print('starting evaluation...')
-    evaluation.final_evaluation(classes, excerpt_size, feature_type, model_path, scenes, training_dataset, device)
+    evaluation.final_evaluation(classes, hyper_params['excerpt_size'], hyper_params['feature_type'], model_path, scenes,
+                                training_dataset, device)
     print('zipping "results" folder...')
     utils.zip_folder('results')
 
 
 def log_validation_params(writer: SummaryWriter, val_loss: Tensor, params: Iterator[Parameter],
-                          metrics: Metrics, metrics_pp: Metrics, update: int) -> None:
+                          metrics: Metrics, metrics_pp: Metrics, update: int) -> Tuple[float, float]:
     writer.add_scalar(tag="validation/loss", scalar_value=val_loss, global_step=update)
     # Add weights to tensorboard
     for i, param in enumerate(params):
@@ -151,10 +158,14 @@ def log_validation_params(writer: SummaryWriter, val_loss: Tensor, params: Itera
     # Add gradients to tensorboard
     for i, param in enumerate(params):
         writer.add_histogram(tag=f'validation/gradients_{i}', values=param.grad.cpu(), global_step=update)
-    write_categories = ['dcase/segment_based/overall', 'dcase_pp/segment_based/overall',
-                        'dcase/segment_based/class_wise_average', 'dcase_pp/segment_based/class_wise_average',
-                        'dcase/event_based/onset', 'dcase_pp/event_based/onset',
-                        'dcase/event_based/onset-offset', 'dcase_pp/event_based/onset-offset'
+    write_categories = ['dcase/segment_based/overall',
+                        'dcase/segment_based/class_wise_average',
+                        'dcase_pp/segment_based/overall',
+                        'dcase_pp/segment_based/class_wise_average',
+                        'dcase/event_based/onset',
+                        'dcase/event_based/onset-offset',
+                        'dcase_pp/event_based/onset',
+                        'dcase_pp/event_based/onset-offset'
                         ]
     write_scalars = ['F', 'ER']
 
@@ -174,6 +185,7 @@ def log_validation_params(writer: SummaryWriter, val_loss: Tensor, params: Itera
 
     write_metrics(metrics, 'dcase')
     write_metrics(metrics_pp, 'dcase_pp')
+    return metrics.segment_based['overall']['F'], metrics.segment_based['overall']['ER']
 
 
 if __name__ == '__main__':

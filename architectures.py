@@ -6,7 +6,8 @@ from torch.nn import Conv2d, BatchNorm2d, ReLU, Sequential, MaxPool2d, Dropout, 
 
 
 class SimpleCNN(torch.nn.Module):
-    def __init__(self, in_channels: int = 1, n_kernels: int = 16, n_features: int = 128, out_features: int = 18):
+    def __init__(self, in_channels: int = 1, n_kernels: int = 16, n_features: int = 128, out_features: int = 18,
+                 p_dropout: float = 0.3):
         """Simple CNN"""
         super(SimpleCNN, self).__init__()
         self.out_features = out_features
@@ -16,6 +17,7 @@ class SimpleCNN(torch.nn.Module):
         layers.append(ReLU())
         layers.append(BatchNorm2d(n_kernels))
         layers.append(MaxPool2d((2, 1)))
+        layers.append(Dropout(p=p_dropout))
         self.layers1 = torch.nn.Sequential(*layers)
 
         layers = []
@@ -24,6 +26,7 @@ class SimpleCNN(torch.nn.Module):
         layers.append(ReLU())
         layers.append(BatchNorm2d(2 * n_kernels))
         layers.append(MaxPool2d((2, 1)))
+        layers.append(Dropout(p=p_dropout))
         self.layers2 = torch.nn.Sequential(*layers)
 
         layers = []
@@ -32,6 +35,7 @@ class SimpleCNN(torch.nn.Module):
         layers.append(ReLU())
         layers.append(BatchNorm2d(2 * n_kernels))
         layers.append(MaxPool2d((2, 1)))
+        layers.append(Dropout(p=p_dropout))
         # layers.append(torch.nn.AvgPool2d(n_kernels))
         self.layers3 = torch.nn.Sequential(*layers)
 

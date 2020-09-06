@@ -1,8 +1,25 @@
 {
   "device": "cuda:0",
-  "learning_rate": 1e-4,
-  "weight_decay": 1e-5,
-  "n_updates": 5e3,
+  "hyper_params": {
+    "feature_type": "mels",
+    "excerpt_size": 384,
+    "batch_size": 16,
+    "learning_rate": 1e-5,
+    "weight_decay": 1e-6,
+    "n_updates": 5e3
+  },
+  "network_config": {
+    "in_channels": 1,
+    "n_kernels": 64,
+    "p_dropout": 0.3
+  },
+  "eval_settings": {
+    "train_stats_at": 1e2,
+    "validate_at": 5e2
+  },
+  "scenes": [
+    "home"
+  ],
   "classes": [
     "(object) rustling",
     "(object) snapping",
@@ -15,17 +32,5 @@
     "people walking",
     "washing dishes",
     "water tap running"
-  ],
-  "feature_type": "mels",
-  "excerpt_size": 384,
-  "batch_size": 16,
-  "scenes": ["home"],
-  "network_config": {
-    "in_channels": 1,
-    "n_kernels": 64
-  },
-  "eval_settings": {
-    "train_stats_at": 1e2,
-    "validate_at": 5e2
-  }
+  ]
 }

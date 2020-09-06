@@ -24,7 +24,7 @@ def final_evaluation(classes: list, excerpt_size: int, feature_type: str, model_
     net = torch.load(model_path)
     dev_set = ExcerptDataset(training_dataset, classes, excerpt_size=excerpt_size)
     dev_loader = DataLoader(dev_set, batch_size=1, shuffle=False, num_workers=0)
-    eval_set = BaseDataset(scenes=scenes, features=feature_type, data_path=os.path.join('data', 'eval'))
+    eval_set = BaseDataset(scenes=scenes, feature_type=feature_type, data_path=os.path.join('data', 'eval'))
     eval_set = ExcerptDataset(eval_set, classes, excerpt_size=excerpt_size)
     eval_loader = DataLoader(eval_set, batch_size=1, shuffle=False, num_workers=0)
 
