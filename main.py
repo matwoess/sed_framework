@@ -64,7 +64,8 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
 def main(scenes: list, hyper_params: dict, network_config: dict, eval_settings: dict, fft_params: dict,
          device: torch.device = torch.device("cuda:0")):
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
-    experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f' - {" - ".join(scenes)}'
+    experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+    experiment_id += f' - {hyper_params["feature_type"]} - {" - ".join(scenes)}'
     writer = SummaryWriter(log_dir=os.path.join('results', 'tensorboard', experiment_id))
     training_dataset = BaseDataset(scenes, hyper_params, fft_params)
     # create network
@@ -94,8 +95,8 @@ def main(scenes: list, hyper_params: dict, network_config: dict, eval_settings: 
 
     fold_idx = 0
     rnd_augment = hyper_params['rnd_augment']
-    train_subset = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[0])
-    val_subset = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
+    train_subset = Subset(training_dataset, training_dataset.get_fold_indices(fold_idx)[0])
+    val_subset = Subset(training_dataset, training_dataset.get_fold_indices(fold_idx)[1])
     train_set = ExcerptDataset(train_subset, hyper_params['feature_type'], classes, hyper_params['excerpt_size'],
                                fft_params, overlap_factor=hyper_params['train_overlap_factor'], rnd_augment=rnd_augment)
     val_set = ExcerptDataset(val_subset, hyper_params['feature_type'], classes, hyper_params['excerpt_size'],

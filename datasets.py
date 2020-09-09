@@ -2,6 +2,8 @@
 import csv
 import glob
 import os
+import threading
+from queue import Queue
 from typing import List, Tuple
 
 import librosa
@@ -146,51 +148,43 @@ class BaseDataset(Dataset):
         self.home_dataset = None
         self.residential_dataset = None
         self.classes = utils.get_scene_classes(scenes)
-        if 'home' in scenes:
-            self.home_dataset = SceneDataset('home', hyper_params, fft_params, data_path)
-        if 'residential_area' in scenes:
-            self.residential_dataset = SceneDataset('residential_area', hyper_params, fft_params, data_path)
-        self.both_sets = self.home_dataset is not None and self.residential_dataset is not None
+        self.datasets = [SceneDataset(s, hyper_params, fft_params, data_path) for s in scenes]
+        self.both_sets = len(self.datasets) > 1
 
-    def get_fold_indices(self, scenes: list, fold_idx) -> Tuple[list, list]:
+    def get_fold_indices(self, fold_idx) -> Tuple[list, list]:
         train = []
         val = []
-        if 'home' in scenes:
-            train_indices, val_indices = self.home_dataset.fold_indices[fold_idx]
-            train.extend(train_indices)
-            val.extend(val_indices)
-        if 'residential_area' in scenes:
-            train_indices, val_indices = self.residential_dataset.fold_indices[fold_idx]
+        for dataset_idx, dataset in enumerate(self.datasets):
+            train_indices, val_indices = dataset.fold_indices[fold_idx]
+            # add offset to indices according to previous dataset lengths
+            for prev_dataset_idx in range(0, dataset_idx):
+                prev_len = len(self.datasets[prev_dataset_idx])
+                train_indices = [orig_idx + prev_len for orig_idx in train_indices]
+                val_indices = [orig_idx + prev_len for orig_idx in val_indices]
             train.extend(train_indices)
             val.extend(val_indices)
         return train, val
 
     def __len__(self):
-        total_len = 0
-        if self.home_dataset is None:
-            total_len += len(self.residential_dataset)
-        if self.residential_dataset is None:
-            total_len += len(self.home_dataset)
-        return total_len
+        return np.sum([len(d) for d in self.datasets], dtype=int)
 
     def __getitem__(self, idx):
-        i = idx
-        if not self.both_sets:
-            from_set = self.residential_dataset if self.home_dataset is None else self.home_dataset
-        else:
-            if idx > len(self.home_dataset):
-                from_set = self.residential_dataset
-                i = idx - len(self.home_dataset)
-            else:
-                from_set = self.home_dataset
-        feature, target, sr, audio_file, _ = from_set[i]
-        if self.both_sets:
-            missing_targets = np.zeros((len(self.classes) - target.shape[0], target.shape[1]))
-            if from_set == self.residential_dataset:
-                target = np.vstack((missing_targets, target))
-            else:
-                target = np.vstack((target, missing_targets))
-        return feature, target, sr, audio_file, i
+        dataset_idx = idx
+        i = 0
+        from_set = self.datasets[i]
+        while dataset_idx >= len(from_set):
+            i += 1
+            dataset_idx -= len(from_set)
+            from_set = self.datasets[i]
+        feature, target, sr, audio_file, _ = from_set[dataset_idx]
+        # 0-pad target array if more than 1 dataset
+        if len(self.datasets) > 1:
+            all_targets = np.zeros(shape=(len(self.classes), target.shape[1]))
+            datasets_before = self.datasets[:i]
+            pad_indices = np.sum([len(d.classes) for d in datasets_before], dtype=int)
+            all_targets[pad_indices:(pad_indices + target.shape[0])] = target
+            target = all_targets
+        return feature, target, sr, audio_file, dataset_idx
 
 
 class ExcerptDataset(Dataset):
@@ -208,15 +202,30 @@ class ExcerptDataset(Dataset):
         self.excerpt_targets = None
         self.audio_files = None
         self.excerpt_count = None
+
+        self.excerpt_queue = Queue(maxsize=1)
+        threading.Thread(target=self.excerpt_producer_thread).start()
         self.generate_excerpts()
 
     def generate_excerpts(self):
+        feature_excerpts, excerpt_targets, audio_files, excerpt_count = self.excerpt_queue.get(block=True)
+        self.feature_excerpts = feature_excerpts
+        self.excerpt_targets = excerpt_targets
+        self.audio_files = audio_files
+        self.excerpt_count = excerpt_count
+        threading.Thread(target=self.excerpt_producer_thread).start()
+
+    def excerpt_producer_thread(self):
+        excerpt_tuple = self.get_excerpts()
+        self.excerpt_queue.put(excerpt_tuple, block=True)
+
+    def get_excerpts(self):
         excerpt_count = 0
         feature_excerpts = []
         excerpt_targets = []
         audio_files = []
         hop = self.excerpt_size // self.overlap_factor
-        for idx, data in tqdm(enumerate(self.dataset), total=len(self.dataset), position=0, desc='preparing excerpts'):
+        for idx, data in enumerate(self.dataset):
             feature, targets, sr, audio_file, _ = data
             if self.rnd_augment:
                 feature = augment.apply_random_stretching(feature)
@@ -240,10 +249,7 @@ class ExcerptDataset(Dataset):
                 excerpt_targets.append(target_excerpt)
                 audio_files.append(audio_file)
             excerpt_count += n_excerpts
-        self.feature_excerpts = feature_excerpts
-        self.excerpt_targets = excerpt_targets
-        self.audio_files = audio_files
-        self.excerpt_count = excerpt_count
+        return feature_excerpts, excerpt_targets, audio_files, excerpt_count
 
     def __len__(self):
         return self.excerpt_count

@@ -4,6 +4,8 @@ import random
 import numpy as np
 import scipy.ndimage
 
+random.seed(0)
+
 
 def apply_random_augmentations(spectrogram: np.ndarray) -> np.ndarray:
     spectrogram = apply_random_stretching(spectrogram)
