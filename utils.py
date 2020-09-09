@@ -1,12 +1,40 @@
 # -*- coding: utf-8 -*-
 import os
 import zipfile
+from typing import List
 
 import numpy as np
 import requests
 import tqdm
 from matplotlib import pyplot as plt
 from scipy.ndimage import median_filter
+
+
+def get_scene_classes(scenes: List[str]) -> List[str]:
+    classes = []
+    if 'home' in scenes:
+        classes.extend([
+            "(object) rustling",
+            "(object) snapping",
+            "cupboard",
+            "cutlery",
+            "dishes",
+            "drawer",
+            "glass jingling",
+            "object impact",
+            "people walking",
+            "washing dishes",
+            "water tap running"])
+    if 'residential_area' in scenes:
+        classes.extend([
+            "(object) banging",
+            "bird singing",
+            "car passing by",
+            "children shouting",
+            "people speaking",
+            "people walking",
+            "wind blowing"])
+    return classes
 
 
 def median_filter_predictions(array: np.ndarray, frame_size: int = 10) -> np.ndarray:

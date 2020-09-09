@@ -15,9 +15,9 @@ import utils
 
 
 class SceneDataset(Dataset):
-    def __init__(self, scene: str, classes: list, hyper_params: dict, fft_params: dict, data_path: str):
+    def __init__(self, scene: str, hyper_params: dict, fft_params: dict, data_path: str):
         self.scene = scene
-        self.classes = classes
+        self.classes = utils.get_scene_classes([scene])
         self.feature_type = hyper_params['feature_type']
         self.excerpt_size = hyper_params['excerpt_size']
         self.data_path = data_path
@@ -138,17 +138,19 @@ class SceneDataset(Dataset):
 
 
 class BaseDataset(Dataset):
-    def __init__(self, scenes: List[str], classes: list, hyper_params: dict, fft_params: dict,
+    def __init__(self, scenes: List[str], hyper_params: dict, fft_params: dict,
                  data_path: str = os.path.join('data', 'dev')):
         if not os.path.exists(data_path):
             utils.download_dataset()
         self.data_path = data_path
         self.home_dataset = None
         self.residential_dataset = None
+        self.classes = utils.get_scene_classes(scenes)
         if 'home' in scenes:
-            self.home_dataset = SceneDataset('home', classes, hyper_params, fft_params, data_path)
+            self.home_dataset = SceneDataset('home', hyper_params, fft_params, data_path)
         if 'residential_area' in scenes:
-            self.residential_dataset = SceneDataset('residential_area', classes, hyper_params, fft_params, data_path)
+            self.residential_dataset = SceneDataset('residential_area', hyper_params, fft_params, data_path)
+        self.both_sets = self.home_dataset is not None and self.residential_dataset is not None
 
     def get_fold_indices(self, scenes: list, fold_idx) -> Tuple[list, list]:
         train = []
@@ -173,42 +175,47 @@ class BaseDataset(Dataset):
 
     def __getitem__(self, idx):
         i = idx
-        if self.home_dataset is None:
-            from_set = self.residential_dataset
-        elif self.residential_dataset is None:
-            from_set = self.home_dataset
-        # in case we use both scenes
-        elif idx > len(self.home_dataset):
-            from_set = self.residential_dataset
-            i = idx - len(self.home_dataset)
+        if not self.both_sets:
+            from_set = self.residential_dataset if self.home_dataset is None else self.home_dataset
         else:
-            from_set = self.home_dataset
+            if idx > len(self.home_dataset):
+                from_set = self.residential_dataset
+                i = idx - len(self.home_dataset)
+            else:
+                from_set = self.home_dataset
         feature, target, sr, audio_file, _ = from_set[i]
+        if self.both_sets:
+            missing_targets = np.zeros((len(self.classes) - target.shape[0], target.shape[1]))
+            if from_set == self.residential_dataset:
+                target = np.vstack((missing_targets, target))
+            else:
+                target = np.vstack((target, missing_targets))
         return feature, target, sr, audio_file, i
 
 
 class ExcerptDataset(Dataset):
     def __init__(self, dataset: Dataset, feature_type: str, classes: list, excerpt_size: int, fft_params: dict,
-                 overlap=False, rnd_augment=False):
+                 overlap_factor: int = 1, rnd_augment: bool = False):
         self.dataset = dataset
         self.feature_type = feature_type
         self.excerpt_size = excerpt_size
         self.classes = classes
         self.fft_params = fft_params
-        self.overlap = overlap
+        self.overlap_factor = overlap_factor
         self.rnd_augment = rnd_augment
-        # self.generate_excerpts(dataset, excerpt_size, overlap)
+
         self.feature_excerpts = None
         self.excerpt_targets = None
         self.audio_files = None
         self.excerpt_count = None
+        self.generate_excerpts()
 
     def generate_excerpts(self):
         excerpt_count = 0
         feature_excerpts = []
         excerpt_targets = []
         audio_files = []
-        hop = self.excerpt_size if not self.overlap else self.excerpt_size // 2
+        hop = self.excerpt_size // self.overlap_factor
         for idx, data in tqdm(enumerate(self.dataset), total=len(self.dataset), position=0, desc='preparing excerpts'):
             feature, targets, sr, audio_file, _ = data
             if self.rnd_augment:
@@ -228,7 +235,7 @@ class ExcerptDataset(Dataset):
                 feature_excerpt = np.zeros(shape=(feature_count, self.excerpt_size))
                 target_excerpt = np.zeros(shape=(len(self.classes), self.excerpt_size))
                 feature_excerpt[:, 0:end_idx - begin_idx] = feature[:, begin_idx:end_idx]
-                target_excerpt[:, 0:end_idx-begin_idx] = targets[:, begin_idx:end_idx]
+                target_excerpt[:, 0:end_idx - begin_idx] = targets[:, begin_idx:end_idx]
                 feature_excerpts.append(feature_excerpt)
                 excerpt_targets.append(target_excerpt)
                 audio_files.append(audio_file)
@@ -242,7 +249,6 @@ class ExcerptDataset(Dataset):
         return self.excerpt_count
 
     def __getitem__(self, idx):
-        # nomalize inputs
         excerpt = self.feature_excerpts[idx]
         if self.rnd_augment and self.feature_type != 'mfccs':
             excerpt = augment.apply_random_noise(excerpt)

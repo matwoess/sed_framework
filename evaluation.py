@@ -25,7 +25,7 @@ def final_evaluation(classes: list, hyper_params: dict, fft_params: dict, model_
     dev_set = ExcerptDataset(training_dataset, hyper_params['feature_type'], classes, hyper_params['excerpt_size'],
                              fft_params)
     dev_loader = DataLoader(dev_set, batch_size=1, shuffle=False, num_workers=0)
-    eval_set = BaseDataset(scenes, classes, hyper_params, fft_params, os.path.join('data', 'eval'))
+    eval_set = BaseDataset(scenes, hyper_params, fft_params, os.path.join('data', 'eval'))
     eval_set = ExcerptDataset(eval_set, hyper_params['feature_type'], classes, hyper_params['excerpt_size'], fft_params)
     eval_loader = DataLoader(eval_set, batch_size=1, shuffle=False, num_workers=0)
 

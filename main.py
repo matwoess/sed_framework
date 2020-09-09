@@ -61,14 +61,14 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
     return loss, metrics, metrics_pp
 
 
-def main(hyper_params: dict, network_config: dict, eval_settings: dict, classes: list, scenes: list, fft_params: dict,
+def main(scenes: list, hyper_params: dict, network_config: dict, eval_settings: dict, fft_params: dict,
          device: torch.device = torch.device("cuda:0")):
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
     experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f' - {" - ".join(scenes)}'
     writer = SummaryWriter(log_dir=os.path.join('results', 'tensorboard', experiment_id))
-    training_dataset = BaseDataset(scenes, classes, hyper_params, fft_params)
-
-    # Create Network
+    training_dataset = BaseDataset(scenes, hyper_params, fft_params)
+    # create network
+    classes = utils.get_scene_classes(scenes)
     network_config['out_features'] = len(classes)
     net = SimpleCNN(**network_config)
     # Save initial model as "best" model (will be overwritten later)
@@ -97,18 +97,15 @@ def main(hyper_params: dict, network_config: dict, eval_settings: dict, classes:
     train_subset = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[0])
     val_subset = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
     train_set = ExcerptDataset(train_subset, hyper_params['feature_type'], classes, hyper_params['excerpt_size'],
-                               fft_params, overlap=hyper_params['overlap_train_excerpts'], rnd_augment=rnd_augment)
+                               fft_params, overlap_factor=hyper_params['train_overlap_factor'], rnd_augment=rnd_augment)
     val_set = ExcerptDataset(val_subset, hyper_params['feature_type'], classes, hyper_params['excerpt_size'],
-                             fft_params, overlap=False, rnd_augment=False)
+                             fft_params, overlap_factor=1, rnd_augment=False)
     train_loader = DataLoader(train_set, batch_size=hyper_params['batch_size'], shuffle=True, num_workers=0)
     val_loader = DataLoader(val_set, batch_size=hyper_params['batch_size'], shuffle=False, num_workers=0)
 
     n_updates = hyper_params['n_updates']
     while update <= n_updates:
-        if update == 0:
-            train_set.generate_excerpts()
-            val_set.generate_excerpts()
-        elif rnd_augment:
+        if rnd_augment and update > 0:
             train_set.generate_excerpts()
         for data in train_loader:
             inputs, targets, audio_file, idx = data
@@ -198,10 +195,13 @@ if __name__ == '__main__':
     import json
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('scene', help='"home", "residential_area" or "both"', type=str)
     parser.add_argument('config_file', help='path to config file', type=str)
     args = parser.parse_args()
+    scene = args.scene
+    scene_list = ['home', 'residential_area'] if scene == "both" else [scene]
     config_file = args.config_file
 
     with open(config_file, 'r') as fh:
         config = json.load(fh)
-    main(**config)
+    main(scene_list, **config)
