@@ -10,9 +10,9 @@ from matplotlib import pyplot as plt
 from scipy.ndimage import median_filter
 
 
-def get_scene_classes(scenes: List[str]) -> List[str]:
+def get_scene_classes(scene: str) -> List[str]:
     classes = []
-    if 'home' in scenes:
+    if scene in ['indoor', 'all']:
         classes.extend([
             "(object) rustling",
             "(object) snapping",
@@ -25,7 +25,7 @@ def get_scene_classes(scenes: List[str]) -> List[str]:
             "people walking",
             "washing dishes",
             "water tap running"])
-    if 'residential_area' in scenes:
+    if scene in ['outdoor', 'all']:
         classes.extend([
             "(object) banging",
             "bird singing",

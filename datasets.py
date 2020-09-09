@@ -17,10 +17,10 @@ import utils
 
 
 class SceneDataset(Dataset):
-    def __init__(self, scene: str, hyper_params: dict, fft_params: dict, data_path: str):
+    def __init__(self, feature_type: str, scene: str, hyper_params: dict, fft_params: dict, data_path: str):
         self.scene = scene
-        self.classes = utils.get_scene_classes([scene])
-        self.feature_type = hyper_params['feature_type']
+        self.classes = utils.get_scene_classes(scene)
+        self.feature_type = feature_type
         self.excerpt_size = hyper_params['excerpt_size']
         self.data_path = data_path
         self.n_fft = fft_params['n_fft']
@@ -140,16 +140,19 @@ class SceneDataset(Dataset):
 
 
 class BaseDataset(Dataset):
-    def __init__(self, scenes: List[str], hyper_params: dict, fft_params: dict,
+    def __init__(self, feature_type: str, scene: str, hyper_params: dict, fft_params: dict,
                  data_path: str = os.path.join('data', 'dev')):
         if not os.path.exists(data_path):
             utils.download_dataset()
         self.data_path = data_path
         self.home_dataset = None
         self.residential_dataset = None
-        self.classes = utils.get_scene_classes(scenes)
-        self.datasets = [SceneDataset(s, hyper_params, fft_params, data_path) for s in scenes]
-        self.both_sets = len(self.datasets) > 1
+        self.classes = utils.get_scene_classes(scene)
+        self.datasets = []
+        if scene in ['indoor', 'all']:
+            self.datasets.append(SceneDataset(feature_type, 'home', hyper_params, fft_params, data_path))
+        if scene in ['outdoor', 'all']:
+            self.datasets.append(SceneDataset(feature_type, 'residential_area', hyper_params, fft_params, data_path))
 
     def get_fold_indices(self, fold_idx) -> Tuple[list, list]:
         train = []

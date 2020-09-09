@@ -18,15 +18,18 @@ class Metrics(NamedTuple):
     segment_based: dict
 
 
-def final_evaluation(classes: list, hyper_params: dict, fft_params: dict, model_path: str, scenes: list,
-                     training_dataset: BaseDataset, device: torch.device) -> None:
+def final_evaluation(feature_type: str, scene: str, hyper_params: dict, fft_params: dict, model_path: str,
+                     device: torch.device) -> None:
     # final evaluation on best model
     net = torch.load(model_path)
-    dev_set = ExcerptDataset(training_dataset, hyper_params['feature_type'], classes, hyper_params['excerpt_size'],
-                             fft_params)
+    classes = utils.get_scene_classes(scene)
+    dev_dataset = BaseDataset(feature_type, scene, hyper_params, fft_params)
+    eval_dataset = BaseDataset(feature_type, scene, hyper_params, fft_params, data_path=os.path.join('data', 'eval'))
+    dev_set = ExcerptDataset(dev_dataset, feature_type, classes, hyper_params['excerpt_size'], fft_params,
+                             overlap_factor=1, rnd_augment=False)
+    eval_set = ExcerptDataset(eval_dataset, feature_type, classes, hyper_params['excerpt_size'], fft_params,
+                              overlap_factor=1, rnd_augment=False)
     dev_loader = DataLoader(dev_set, batch_size=1, shuffle=False, num_workers=0)
-    eval_set = BaseDataset(scenes, hyper_params, fft_params, os.path.join('data', 'eval'))
-    eval_set = ExcerptDataset(eval_set, hyper_params['feature_type'], classes, hyper_params['excerpt_size'], fft_params)
     eval_loader = DataLoader(eval_set, batch_size=1, shuffle=False, num_workers=0)
 
     eval_loss, eval_metrics, eval_pp_metrics = evaluate_model_on_files(net, eval_loader, classes, device=device)

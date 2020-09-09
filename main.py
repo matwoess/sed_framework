@@ -61,19 +61,18 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
     return loss, metrics, metrics_pp
 
 
-def main(scenes: list, hyper_params: dict, network_config: dict, eval_settings: dict, fft_params: dict,
+def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict, eval_settings: dict, fft_params: dict,
          device: torch.device = torch.device("cuda:0")):
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
-    experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    experiment_id += f' - {hyper_params["feature_type"]} - {" - ".join(scenes)}'
+    experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f' - {feature_type} - {scene}'
     writer = SummaryWriter(log_dir=os.path.join('results', 'tensorboard', experiment_id))
-    training_dataset = BaseDataset(scenes, hyper_params, fft_params)
+    training_dataset = BaseDataset(feature_type, scene, hyper_params, fft_params)
     # create network
-    classes = utils.get_scene_classes(scenes)
+    classes = utils.get_scene_classes(scene)
     network_config['out_features'] = len(classes)
     net = SimpleCNN(**network_config)
     # Save initial model as "best" model (will be overwritten later)
-    model_path = os.path.join('results', f'best_{"_".join(scenes)}_{hyper_params["feature_type"]}_model.pt')
+    model_path = os.path.join('results', f'best_{feature_type}_{scene}_model.pt')
     if not os.path.exists(model_path):
         torch.save(net, model_path)
     else:  # if there already exists a model load parameters
@@ -97,9 +96,9 @@ def main(scenes: list, hyper_params: dict, network_config: dict, eval_settings: 
     rnd_augment = hyper_params['rnd_augment']
     train_subset = Subset(training_dataset, training_dataset.get_fold_indices(fold_idx)[0])
     val_subset = Subset(training_dataset, training_dataset.get_fold_indices(fold_idx)[1])
-    train_set = ExcerptDataset(train_subset, hyper_params['feature_type'], classes, hyper_params['excerpt_size'],
+    train_set = ExcerptDataset(train_subset, feature_type, classes, hyper_params['excerpt_size'],
                                fft_params, overlap_factor=hyper_params['train_overlap_factor'], rnd_augment=rnd_augment)
-    val_set = ExcerptDataset(val_subset, hyper_params['feature_type'], classes, hyper_params['excerpt_size'],
+    val_set = ExcerptDataset(val_subset, feature_type, classes, hyper_params['excerpt_size'],
                              fft_params, overlap_factor=1, rnd_augment=False)
     train_loader = DataLoader(train_set, batch_size=hyper_params['batch_size'], shuffle=True, num_workers=0)
     val_loader = DataLoader(val_set, batch_size=hyper_params['batch_size'], shuffle=False, num_workers=0)
@@ -147,9 +146,12 @@ def main(scenes: list, hyper_params: dict, network_config: dict, eval_settings: 
     print('finished training.')
 
     print('starting evaluation...')
-    evaluation.final_evaluation(classes, hyper_params, fft_params, model_path, scenes, training_dataset, device)
+    evaluation.final_evaluation(feature_type, scene, hyper_params, fft_params, model_path, device)
     print('zipping "results" folder...')
-    utils.zip_folder('results', f'results_{"_".join(scenes)}')
+    utils.zip_folder('results', f'results_{scene}')
+    print('deleting "results" folder')
+    import shutil
+    shutil.rmtree('./results')
 
 
 def log_validation_params(writer: SummaryWriter, val_loss: Tensor, params: Iterator[Parameter],
@@ -196,13 +198,14 @@ if __name__ == '__main__':
     import json
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('scene', help='"home", "residential_area" or "both"', type=str)
+    parser.add_argument('feature_type', help='"spec", "mels" or "mfcc"', type=str)
+    parser.add_argument('scene', help='"indoor", "outdoor" or "all"', type=str)
     parser.add_argument('config_file', help='path to config file', type=str)
     args = parser.parse_args()
-    scene = args.scene
-    scene_list = ['home', 'residential_area'] if scene == "both" else [scene]
-    config_file = args.config_file
+    feature_type_arg = args.feature_type
+    scene_arg = args.scene
+    config_file_arg = args.config_file
 
-    with open(config_file, 'r') as fh:
-        config = json.load(fh)
-    main(scene_list, **config)
+    with open(config_file_arg, 'r') as fh:
+        config_args = json.load(fh)
+    main(feature_type_arg, scene_arg, **config_args)
