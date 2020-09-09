@@ -18,14 +18,15 @@ class Metrics(NamedTuple):
     segment_based: dict
 
 
-def final_evaluation(classes: list, excerpt_size: int, feature_type: str, model_path: str, scenes: list,
+def final_evaluation(classes: list, hyper_params: dict, fft_params: dict, model_path: str, scenes: list,
                      training_dataset: BaseDataset, device: torch.device) -> None:
     # final evaluation on best model
     net = torch.load(model_path)
-    dev_set = ExcerptDataset(training_dataset, classes, excerpt_size=excerpt_size)
+    dev_set = ExcerptDataset(training_dataset, hyper_params['feature_type'], classes, hyper_params['excerpt_size'],
+                             fft_params)
     dev_loader = DataLoader(dev_set, batch_size=1, shuffle=False, num_workers=0)
-    eval_set = BaseDataset(scenes=scenes, feature_type=feature_type, data_path=os.path.join('data', 'eval'))
-    eval_set = ExcerptDataset(eval_set, classes, excerpt_size=excerpt_size)
+    eval_set = BaseDataset(scenes, classes, hyper_params, fft_params, os.path.join('data', 'eval'))
+    eval_set = ExcerptDataset(eval_set, hyper_params['feature_type'], classes, hyper_params['excerpt_size'], fft_params)
     eval_loader = DataLoader(eval_set, batch_size=1, shuffle=False, num_workers=0)
 
     eval_loss, eval_metrics, eval_pp_metrics = evaluate_model_on_files(net, eval_loader, classes, device=device)

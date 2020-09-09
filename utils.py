@@ -106,8 +106,8 @@ def download_dataset(data_path: str = 'data'):
     os.remove(path_temp_file)
 
 
-def zip_folder(folder):
-    archive = zipfile.ZipFile(f'{folder}.zip', 'w', zipfile.ZIP_DEFLATED)
+def zip_folder(folder: str, zipfile_name: str):
+    archive = zipfile.ZipFile(f'{zipfile_name}.zip', 'w', zipfile.ZIP_DEFLATED)
     for root, dirs, files in os.walk(folder):
         for file in files:
             archive.write(os.path.join(root, file))

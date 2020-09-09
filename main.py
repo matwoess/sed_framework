@@ -61,14 +61,12 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
     return loss, metrics, metrics_pp
 
 
-def main(hyper_params: dict, network_config: dict, eval_settings: dict, classes: list, scenes: list,
+def main(hyper_params: dict, network_config: dict, eval_settings: dict, classes: list, scenes: list, fft_params: dict,
          device: torch.device = torch.device("cuda:0")):
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
-    time_string = datetime.now().strftime("%Y%m%d-%H%M%S")
-    time_string += f' - {" - ".join(scenes)}'
-    writer = SummaryWriter(log_dir=os.path.join('results', 'tensorboard', time_string))
-    training_dataset = BaseDataset(scenes=scenes, feature_type=hyper_params['feature_type'])
-    validation_dataset = BaseDataset(scenes=scenes, feature_type=hyper_params['feature_type'])
+    experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f' - {" - ".join(scenes)}'
+    writer = SummaryWriter(log_dir=os.path.join('results', 'tensorboard', experiment_id))
+    training_dataset = BaseDataset(scenes, classes, hyper_params, fft_params)
 
     # Create Network
     network_config['out_features'] = len(classes)
@@ -95,17 +93,25 @@ def main(hyper_params: dict, network_config: dict, eval_settings: dict, classes:
     update = 0  # current update counter
 
     fold_idx = 0
-    train_set = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[0])
-    val_set = Subset(validation_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
-    train_set = ExcerptDataset(train_set, classes, excerpt_size=hyper_params['excerpt_size'], rnd_augment=True)
-    val_set = ExcerptDataset(val_set, classes, excerpt_size=hyper_params['excerpt_size'])
+    rnd_augment = hyper_params['rnd_augment']
+    train_subset = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[0])
+    val_subset = Subset(training_dataset, training_dataset.get_fold_indices(scenes, fold_idx)[1])
+    train_set = ExcerptDataset(train_subset, hyper_params['feature_type'], classes, hyper_params['excerpt_size'],
+                               fft_params, overlap=hyper_params['overlap_train_excerpts'], rnd_augment=rnd_augment)
+    val_set = ExcerptDataset(val_subset, hyper_params['feature_type'], classes, hyper_params['excerpt_size'],
+                             fft_params, overlap=False, rnd_augment=False)
     train_loader = DataLoader(train_set, batch_size=hyper_params['batch_size'], shuffle=True, num_workers=0)
     val_loader = DataLoader(val_set, batch_size=hyper_params['batch_size'], shuffle=False, num_workers=0)
 
     n_updates = hyper_params['n_updates']
     while update <= n_updates:
+        if update == 0:
+            train_set.generate_excerpts()
+            val_set.generate_excerpts()
+        elif rnd_augment:
+            train_set.generate_excerpts()
         for data in train_loader:
-            inputs, targets, _, idx = data
+            inputs, targets, audio_file, idx = data
             inputs = inputs.to(device, dtype=torch.float32)
             targets = targets.to(device, dtype=torch.float32)
             optimizer.zero_grad()
@@ -143,10 +149,9 @@ def main(hyper_params: dict, network_config: dict, eval_settings: dict, classes:
     print('finished training.')
 
     print('starting evaluation...')
-    evaluation.final_evaluation(classes, hyper_params['excerpt_size'], hyper_params['feature_type'], model_path, scenes,
-                                training_dataset, device)
+    evaluation.final_evaluation(classes, hyper_params, fft_params, model_path, scenes, training_dataset, device)
     print('zipping "results" folder...')
-    utils.zip_folder('results')
+    utils.zip_folder('results', f'results_{"_".join(scenes)}')
 
 
 def log_validation_params(writer: SummaryWriter, val_loss: Tensor, params: Iterator[Parameter],
