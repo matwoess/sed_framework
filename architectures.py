@@ -41,8 +41,9 @@ class SimpleCNN(torch.nn.Module):
 
         self.squeeze = Squeeze()
 
+        fnn_in_features = (2 * n_kernels) * (n_features // 8)
         for i in range(out_features):
-            layers = [Linear(2 * n_kernels * n_features // 8, 1), Sigmoid()]
+            layers = [Linear(fnn_in_features, 1), Sigmoid()]
             self.__setattr__(f'output_layer{i}', Sequential(*layers))
 
     def forward(self, x):

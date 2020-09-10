@@ -88,6 +88,19 @@ def plot(targets: np.ndarray, predictions: np.ndarray, classes: list, path: str,
         plt.close(fig)
 
 
+def flatten_dict(dictionary: dict, root: str = '', separator: str = '/'):
+    def flatten(obj, string=''):
+        if type(obj) == dict:
+            string = string + separator if string else string
+            for k in obj.keys():
+                yield from flatten(obj[k], string + str(k))
+        else:
+            yield string, obj
+
+    flat_dict = {k: v for k, v in flatten(dictionary, root)}
+    return flat_dict
+
+
 def download_url(url, save_path, description, chunk_size=4096):
     r = requests.get(url, stream=True)
     with open(save_path, 'wb') as fd:

@@ -70,6 +70,12 @@ def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict
     # create network
     classes = utils.get_scene_classes(scene)
     network_config['out_features'] = len(classes)
+    if feature_type == 'spec':
+        network_config['n_features'] = fft_params['hop_size'] + 1
+    elif feature_type == 'mfcc':
+        network_config['n_features'] = fft_params['n_mfcc']
+    elif feature_type == 'mels':
+        network_config['n_features'] = fft_params['n_mels']
     net = SimpleCNN(**network_config)
     # Save initial model as "best" model (will be overwritten later)
     model_path = os.path.join('results', f'best_{feature_type}_{scene}_model.pt')
@@ -146,7 +152,8 @@ def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict
     print('finished training.')
 
     print('starting evaluation...')
-    evaluation.final_evaluation(feature_type, scene, hyper_params, fft_params, model_path, device)
+    evaluation.final_evaluation(feature_type, scene, hyper_params, network_config, fft_params, model_path, device,
+                                writer)
     print('zipping "results" folder...')
     utils.zip_folder('results', f'results_{scene}')
     print('deleting "results" folder')

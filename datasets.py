@@ -4,7 +4,7 @@ import glob
 import os
 import threading
 from queue import Queue
-from typing import List, Tuple
+from typing import Tuple
 
 import librosa
 import numpy as np
@@ -43,12 +43,13 @@ class SceneDataset(Dataset):
         self.fold_indices = data['fold_indices']
 
     def create_data_file(self, dataset_file):
-        scene_audio_path = os.path.join(self.data_path, 'audio', self.scene)
+        sub_folder = 'residential_area' if self.scene == 'outdoor' else 'home'
+        scene_audio_path = os.path.join(self.data_path, 'audio', sub_folder)
         audio_files = sorted(glob.glob(os.path.join(scene_audio_path, '**/*.wav'), recursive=True))
-        meta_path = os.path.join(self.data_path, 'meta', self.scene)
+        meta_path = os.path.join(self.data_path, 'meta', sub_folder)
         annotations = self.read_annotations(meta_path)
         if self.n_folds > 0:
-            folds = self.get_folds(self.data_path, self.scene, num_folds=self.n_folds)
+            folds = self.get_folds(self.data_path, sub_folder, num_folds=self.n_folds)
             fold_indices = self.get_fold_indices(audio_files, folds)
         else:
             fold_indices = []
@@ -150,9 +151,9 @@ class BaseDataset(Dataset):
         self.classes = utils.get_scene_classes(scene)
         self.datasets = []
         if scene in ['indoor', 'all']:
-            self.datasets.append(SceneDataset(feature_type, 'home', hyper_params, fft_params, data_path))
+            self.datasets.append(SceneDataset(feature_type, 'indoor', hyper_params, fft_params, data_path))
         if scene in ['outdoor', 'all']:
-            self.datasets.append(SceneDataset(feature_type, 'residential_area', hyper_params, fft_params, data_path))
+            self.datasets.append(SceneDataset(feature_type, 'outdoor', hyper_params, fft_params, data_path))
 
     def get_fold_indices(self, fold_idx) -> Tuple[list, list]:
         train = []
@@ -232,11 +233,11 @@ class ExcerptDataset(Dataset):
             feature, targets, sr, audio_file, _ = data
             if self.rnd_augment:
                 feature = augment.apply_random_stretching(feature)
-            if self.feature_type in ['mels', 'mfccs']:
+            if self.feature_type in ['mels', 'mfcc']:
                 mel_basis = librosa.filters.mel(sr=sr, n_fft=self.fft_params['n_fft'])
                 feature = np.dot(mel_basis, feature)
             feature = librosa.amplitude_to_db(feature, ref=np.max)
-            if self.feature_type == 'mfccs':
+            if self.feature_type == 'mfcc':
                 feature = librosa.feature.mfcc(S=feature, n_mfcc=self.fft_params['n_mfcc'])
             feature_count = feature.shape[0]
             sequence_positions = feature.shape[1]
@@ -259,10 +260,11 @@ class ExcerptDataset(Dataset):
 
     def __getitem__(self, idx):
         excerpt = self.feature_excerpts[idx]
-        if self.rnd_augment and self.feature_type != 'mfccs':
+        if self.rnd_augment:
             excerpt = augment.apply_random_noise(excerpt)
-            excerpt = augment.apply_random_db_alteration(excerpt)
-            excerpt = augment.apply_random_excerpt_filter(excerpt)
+            if self.feature_type != 'mfcc':
+                excerpt = augment.apply_random_db_alteration(excerpt)
+                excerpt = augment.apply_random_excerpt_filter(excerpt)
         excerpt = augment.apply_normalization(excerpt)
         excerpt = np.expand_dims(excerpt, axis=0)
         return excerpt, self.excerpt_targets[idx], self.audio_files[idx], idx

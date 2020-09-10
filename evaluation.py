@@ -3,6 +3,7 @@ from typing import Tuple, NamedTuple, List
 
 import torch
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import numpy as np
 
@@ -18,8 +19,8 @@ class Metrics(NamedTuple):
     segment_based: dict
 
 
-def final_evaluation(feature_type: str, scene: str, hyper_params: dict, fft_params: dict, model_path: str,
-                     device: torch.device) -> None:
+def final_evaluation(feature_type: str, scene: str, hyper_params: dict, network_params: dict, fft_params: dict,
+                     model_path: str, device: torch.device, writer: SummaryWriter) -> None:
     # final evaluation on best model
     net = torch.load(model_path)
     classes = utils.get_scene_classes(scene)
@@ -48,6 +49,14 @@ def final_evaluation(feature_type: str, scene: str, hyper_params: dict, fft_para
     write_dcase_metrics_to_file(avg_dev_metrics, os.path.join('results', 'final', 'metrics'), 'dev_average')
     write_dcase_metrics_to_file(avg_eval_pp_metrics, os.path.join('results', 'final_pp', 'metrics'), 'eval_average')
     write_dcase_metrics_to_file(avg_dev_pp_metrics, os.path.join('results', 'final_pp', 'metrics'), 'dev_average')
+    all_params = {}
+    for key in hyper_params.keys():
+        all_params[key] = hyper_params[key]
+    for key in network_params.keys():
+        all_params[key] = network_params[key]
+    for key in fft_params.keys():
+        all_params[key] = fft_params[key]
+    writer.add_hparams(all_params, utils.flatten_dict(avg_eval_metrics.segment_based['overall'], 'h_param'))
 
 
 def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, classes: list,
@@ -74,8 +83,8 @@ def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.D
                 all_predictions = np.concatenate(file_predictions, axis=2)
                 # plot and compute metrics
                 filename = os.path.split(curr_file)[-1]
-                utils.plot(all_targets, all_predictions, classes, plot_path, filename, False, to_seconds=True)
-                utils.plot(all_targets, all_predictions, classes, plot_pp_path, filename, True, to_seconds=True)
+                # utils.plot(all_targets, all_predictions, classes, plot_path, filename, False, to_seconds=True)
+                # utils.plot(all_targets, all_predictions, classes, plot_pp_path, filename, True, to_seconds=True)
                 metrics = compute_dcase_metrics(all_targets, all_predictions, classes, False)
                 write_dcase_metrics_to_file(metrics, metrics_path, filename)
                 metrics_pp = compute_dcase_metrics(all_targets, all_predictions, classes, True)
