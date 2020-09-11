@@ -44,50 +44,6 @@ def median_filter_predictions(array: np.ndarray, frame_size: int = 10) -> np.nda
     return result
 
 
-def plot(targets: np.ndarray, predictions: np.ndarray, classes: list, path: str, identifier,
-         post_process=False, to_seconds=False) -> None:
-    print('plotting results...')
-    os.makedirs(path, exist_ok=True)
-    cmap = ['b', 'r', 'g', 'y', 'k', 'c', 'm']
-    label_size = 6 if len(classes) < 12 else 4
-    # compute errors
-    threshold = 0.5
-    thresh_predictions = np.where(predictions >= threshold, 1, 0)
-    if post_process:
-        thresh_predictions = median_filter_predictions(thresh_predictions, frame_size=10)
-    errors = thresh_predictions != targets
-    # create subplots for targets, predictions and errors
-    to_plot = [targets, thresh_predictions, errors]
-    plot_titles = ['target', 'prediction', 'error']
-    batches = targets.shape[0]
-    length = targets.shape[-1]
-    x_factor = 1
-    if to_seconds:
-        x_factor = 512 / 22050  # TODO parameters for hop size and sampling rate
-        length = int(length * x_factor)
-    for b in range(batches):
-        plt.rc('ytick', labelsize=label_size)
-        fig, ax = plt.subplots(3, 1)
-        plt.setp(ax, yticklabels=classes, yticks=np.arange(len(classes)),
-                 xlim=(-5, length + 5), ylim=(-0.5, len(classes) - 0.5))
-        for a, array in enumerate(to_plot):
-            for c, cls in enumerate(classes):
-                mask = [x == 1 for x in array[b, c, :]]
-                x_data = [i * x_factor for i, m in enumerate(mask) if m]
-                y_data = [c for m in mask if m]
-                ax[a].set_title(plot_titles[a])
-                color = cmap[c % len(cmap)]
-                ax[a].plot(x_data, y_data, marker='.', color=color, linestyle='None', markersize=1)
-        # fig.show()
-        fig.tight_layout()
-        if type(identifier) == int:
-            save_path = os.path.join(path, f"{identifier:07d}_{b:02d}.png")
-        else:
-            save_path = os.path.join(path, f'{identifier}.png')
-        fig.savefig(save_path, dpi=500)
-        plt.close(fig)
-
-
 def flatten_dict(dictionary: dict, root: str = '', separator: str = '/'):
     def flatten(obj, string=''):
         if type(obj) == dict:

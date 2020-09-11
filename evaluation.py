@@ -11,10 +11,11 @@ import numpy as np
 import util
 from dataset import ExcerptDataset, BaseDataset
 import metric
+from plot import Plotter
 
 
 def final_evaluation(feature_type: str, scene: str, hyper_params: dict, network_params: dict, fft_params: dict,
-                     model_path: str, device: torch.device, writer: SummaryWriter) -> None:
+                     model_path: str, device: torch.device, writer: SummaryWriter, plotter: Plotter) -> None:
     # final evaluation on best model
     net = torch.load(model_path)
     classes = util.get_scene_classes(scene)
@@ -27,8 +28,8 @@ def final_evaluation(feature_type: str, scene: str, hyper_params: dict, network_
     dev_loader = DataLoader(dev_set, batch_size=1, shuffle=False, num_workers=0)
     eval_loader = DataLoader(eval_set, batch_size=1, shuffle=False, num_workers=0)
 
-    eval_loss, eval_metrics, eval_pp_metrics = evaluate_model_on_files(net, eval_loader, classes, device=device)
-    dev_loss, dev_metrics, dev_pp_metrics = evaluate_model_on_files(net, dev_loader, classes, device=device)
+    eval_loss, eval_metrics, eval_pp_metrics = evaluate_model_on_files(net, eval_loader, classes, device, plotter)
+    dev_loss, dev_metrics, dev_pp_metrics = evaluate_model_on_files(net, dev_loader, classes, device, plotter)
     # Write result to separate file
     with open(os.path.join('results', 'final_losses.txt'), 'w') as f:
         print(f"Scores:", file=f)
@@ -59,7 +60,7 @@ def final_evaluation(feature_type: str, scene: str, hyper_params: dict, network_
 
 
 def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, classes: list,
-                            device: torch.device, loss_fn=torch.nn.BCELoss()) -> Tuple[torch.Tensor, list, list]:
+                            device: torch.device, plotter: Plotter, loss_fn=torch.nn.BCELoss()) -> Tuple[torch.Tensor, list, list]:
     plot_path = os.path.join('results', 'final', 'plots')
     metrics_path = os.path.join('results', 'final', 'metrics')
     plot_pp_path = os.path.join('results', 'final_pp', 'plots')
@@ -82,8 +83,8 @@ def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.D
                 all_predictions = np.concatenate(file_predictions, axis=2)
                 # plot and compute metrics
                 filename = os.path.split(curr_file)[-1]
-                util.plot(all_targets, all_predictions, classes, plot_path, filename, False, to_seconds=True)
-                util.plot(all_targets, all_predictions, classes, plot_pp_path, filename, True, to_seconds=True)
+                plotter.plot(all_targets, all_predictions, plot_path, filename, False, to_seconds=True)
+                plotter.plot(all_targets, all_predictions, plot_pp_path, filename, True, to_seconds=True)
                 metrics = metric.compute_dcase_metrics(all_targets, all_predictions, classes, False)
                 metric.write_dcase_metrics_to_file(metrics, metrics_path, filename)
                 metrics_pp = metric.compute_dcase_metrics(all_targets, all_predictions, classes, True)

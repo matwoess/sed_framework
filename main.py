@@ -18,12 +18,13 @@ import metric
 from architecture import SimpleCNN
 from dataset import BaseDataset, ExcerptDataset
 import util
+from plot import Plotter
 
 torch.random.manual_seed(0)  # Set a known random seed for reproducibility
 
 
 def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, classes: list, update: int,
-                   device: torch.device, loss_fn=torch.nn.BCELoss()) -> Tuple[Tensor, dict, dict]:
+                   device: torch.device, plotter: Plotter, loss_fn=torch.nn.BCELoss()) -> Tuple[Tensor, dict, dict]:
     plots_path = os.path.join('results', 'itermediate', 'plots')
     metrics_path = os.path.join('results', 'itermediate', 'metrics')
     os.makedirs(plots_path, exist_ok=True)
@@ -50,7 +51,7 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
         indices = random.choices(np.arange(len(target_list)), k=num_plots)
         targets = np.stack([t for i, t in enumerate(target_list) if i in indices])
         predictions = np.stack([t for i, t in enumerate(prediction_list) if i in indices])
-        util.plot(targets, predictions, classes, plots_path, update)
+        plotter.plot(targets, predictions, plots_path, update)
         # compute dcase metrics
         targets = np.stack(target_list)
         predictions = np.stack(prediction_list)
@@ -70,6 +71,7 @@ def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict
     training_dataset = BaseDataset(feature_type, scene, hyper_params, fft_params)
     # create network
     classes = util.get_scene_classes(scene)
+    plotter = Plotter(classes, hop_size=fft_params['hop_size'], sampling_rate=22050)
     network_config['out_features'] = len(classes)
     if feature_type == 'spec':
         network_config['n_features'] = fft_params['hop_size'] + 1
@@ -130,7 +132,7 @@ def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict
 
             if update % validate_at == 0 and update > 0:
                 # Evaluate model on validation set (after every complete training fold)
-                val_loss, metrics, metrics_pp = validate_model(net, val_loader, classes, update, device)
+                val_loss, metrics, metrics_pp = validate_model(net, val_loader, classes, update, device, plotter)
                 print(f'val_loss: {val_loss}')
                 params = net.parameters()
                 f_score, err_rate = log_validation_params(writer, val_loss, params, metrics, metrics_pp, update)
@@ -154,7 +156,7 @@ def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict
 
     print('starting evaluation...')
     evaluation.final_evaluation(feature_type, scene, hyper_params, network_config, fft_params, model_path, device,
-                                writer)
+                                writer, plotter)
     print('zipping "results" folder...')
     util.zip_folder('results', f'results_{scene}')
     print('deleting "results" folder')
