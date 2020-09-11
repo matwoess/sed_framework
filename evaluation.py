@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 import os
-from typing import Tuple, NamedTuple, List
+from typing import Tuple
 
 import torch
 from torch.utils.data import DataLoader
@@ -7,23 +8,16 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import numpy as np
 
-import utils
-from datasets import ExcerptDataset, BaseDataset
-from dcase16_evaluation import DCASE2013_EventDetection_Metrics, DCASE2016_EventDetection_SegmentBasedMetrics
-
-
-class Metrics(NamedTuple):
-    frame_based: dict
-    event_based: dict
-    class_based: dict
-    segment_based: dict
+import util
+from dataset import ExcerptDataset, BaseDataset
+import metric
 
 
 def final_evaluation(feature_type: str, scene: str, hyper_params: dict, network_params: dict, fft_params: dict,
                      model_path: str, device: torch.device, writer: SummaryWriter) -> None:
     # final evaluation on best model
     net = torch.load(model_path)
-    classes = utils.get_scene_classes(scene)
+    classes = util.get_scene_classes(scene)
     dev_dataset = BaseDataset(feature_type, scene, hyper_params, fft_params)
     eval_dataset = BaseDataset(feature_type, scene, hyper_params, fft_params, data_path=os.path.join('data', 'eval'))
     dev_set = ExcerptDataset(dev_dataset, feature_type, classes, hyper_params['excerpt_size'], fft_params,
@@ -41,14 +35,17 @@ def final_evaluation(feature_type: str, scene: str, hyper_params: dict, network_
         print(f"evaluation set loss: {eval_loss}", file=f)
         print(f"development set loss: {dev_loss}", file=f)
 
-    avg_eval_metrics = calc_avg_metrics(eval_metrics)
-    avg_dev_metrics = calc_avg_metrics(dev_metrics)
-    avg_eval_pp_metrics = calc_avg_metrics(eval_pp_metrics)
-    avg_dev_pp_metrics = calc_avg_metrics(dev_pp_metrics)
-    write_dcase_metrics_to_file(avg_eval_metrics, os.path.join('results', 'final', 'metrics'), 'eval_average')
-    write_dcase_metrics_to_file(avg_dev_metrics, os.path.join('results', 'final', 'metrics'), 'dev_average')
-    write_dcase_metrics_to_file(avg_eval_pp_metrics, os.path.join('results', 'final_pp', 'metrics'), 'eval_average')
-    write_dcase_metrics_to_file(avg_dev_pp_metrics, os.path.join('results', 'final_pp', 'metrics'), 'dev_average')
+    avg_eval_metrics = metric.calc_avg_metrics(eval_metrics)
+    avg_dev_metrics = metric.calc_avg_metrics(dev_metrics)
+    avg_eval_pp_metrics = metric.calc_avg_metrics(eval_pp_metrics)
+    avg_dev_pp_metrics = metric.calc_avg_metrics(dev_pp_metrics)
+    metric.write_dcase_metrics_to_file(avg_eval_metrics, os.path.join('results', 'final', 'metrics'), 'eval_average')
+    metric.write_dcase_metrics_to_file(avg_dev_metrics, os.path.join('results', 'final', 'metrics'), 'dev_average')
+    metric.write_dcase_metrics_to_file(avg_eval_pp_metrics, os.path.join('results', 'final_pp', 'metrics'),
+                                        'eval_average')
+    metric.write_dcase_metrics_to_file(avg_dev_pp_metrics, os.path.join('results', 'final_pp', 'metrics'),
+                                        'dev_average')
+    # log hyper parameters and metrics to tensorboard
     all_params = {}
     for key in hyper_params.keys():
         all_params[key] = hyper_params[key]
@@ -56,7 +53,9 @@ def final_evaluation(feature_type: str, scene: str, hyper_params: dict, network_
         all_params[key] = network_params[key]
     for key in fft_params.keys():
         all_params[key] = fft_params[key]
-    writer.add_hparams(all_params, utils.flatten_dict(avg_eval_metrics.segment_based['overall'], 'h_param'))
+    flat_results = util.flatten_dict(avg_eval_metrics, 'h_param')
+    filtered_results = metric.filter_metrics_dict(flat_results)
+    writer.add_hparams(all_params, filtered_results)
 
 
 def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, classes: list,
@@ -83,12 +82,12 @@ def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.D
                 all_predictions = np.concatenate(file_predictions, axis=2)
                 # plot and compute metrics
                 filename = os.path.split(curr_file)[-1]
-                # utils.plot(all_targets, all_predictions, classes, plot_path, filename, False, to_seconds=True)
-                # utils.plot(all_targets, all_predictions, classes, plot_pp_path, filename, True, to_seconds=True)
-                metrics = compute_dcase_metrics(all_targets, all_predictions, classes, False)
-                write_dcase_metrics_to_file(metrics, metrics_path, filename)
-                metrics_pp = compute_dcase_metrics(all_targets, all_predictions, classes, True)
-                write_dcase_metrics_to_file(metrics_pp, metrics_pp_path, filename)
+                util.plot(all_targets, all_predictions, classes, plot_path, filename, False, to_seconds=True)
+                util.plot(all_targets, all_predictions, classes, plot_pp_path, filename, True, to_seconds=True)
+                metrics = metric.compute_dcase_metrics(all_targets, all_predictions, classes, False)
+                metric.write_dcase_metrics_to_file(metrics, metrics_path, filename)
+                metrics_pp = metric.compute_dcase_metrics(all_targets, all_predictions, classes, True)
+                metric.write_dcase_metrics_to_file(metrics_pp, metrics_pp_path, filename)
                 all_metrics.append(metrics)
                 all_pp_metrics.append(metrics_pp)
                 # set up variables for next file
@@ -106,96 +105,6 @@ def evaluate_model_on_files(net: torch.nn.Module, dataloader: torch.utils.data.D
     return loss, all_metrics, all_pp_metrics
 
 
-def calc_avg_metrics(metrics_list: List[Metrics]) -> Metrics:
-    class_based = [m.class_based for m in metrics_list]
-    frame_based = [m.frame_based for m in metrics_list]
-    event_based = [m.event_based for m in metrics_list]
-    segment_based = [m.segment_based for m in metrics_list]
-
-    def calc_avg_dict(dict_list: list) -> dict:
-        result = {}
-        for dictionary in dict_list:
-            for key in dictionary.keys():
-                if type(dictionary[key]) == dict:
-                    result[key] = calc_avg_dict([d[key] for d in dict_list])
-                else:
-                    result[key] = np.sum([d[key] for d in dict_list]) / len(dict_list)
-        return result
-
-    avg = Metrics(calc_avg_dict(frame_based),
-                  calc_avg_dict(event_based),
-                  calc_avg_dict(class_based),
-                  calc_avg_dict(segment_based))
-    return avg
-
-
-def write_dcase_metrics_to_file(metrics: Metrics, folder, file) -> None:
-    os.makedirs(folder, exist_ok=True)
-
-    def get_dict_string(d: dict, depth=0) -> str:
-        result = ''
-        ident = depth * "  "
-        for key in d:
-            if type(d[key]) == dict:
-                result += f'{ident}{key}:\n{get_dict_string(d[key], depth + 1)}'
-            else:
-                result += f'{ident}{key}: {d[key]}'
-            result += '\n'
-        return result
-
-    with open(os.path.join(folder, f'{file}.txt'), 'w') as f:
-        print(f"=== DCASE2016 - segment based ===\n", file=f)
-        print(get_dict_string(metrics.segment_based), file=f)
-        print(f"=== DCASE2013 - event based ===\n", file=f)
-        print(get_dict_string(metrics.event_based), file=f)
-        print(f"=== DCASE2013 - class based ===\n", file=f)
-        print(get_dict_string(metrics.class_based), file=f)
-        print(f"=== DCASE2013 - frame based ===\n", file=f)
-        print(get_dict_string(metrics.frame_based), file=f)
-
-
-def get_event_list(batch: np.ndarray, classes: list, time_factor=512 / 22050) -> List:
-    event_list = []
-    for cls_idx, cls in enumerate(batch):
-        event = False
-        onset = -1.0
-        # offset = -1.0
-        for i, val in enumerate(cls):
-            if val == 1 and not event:
-                event = True
-                onset = i * time_factor
-            if val == 0 and event:
-                event = False
-                offset = i * time_factor
-                event_list.append({
-                    'event_label': classes[cls_idx],
-                    'event_onset': onset,
-                    'event_offset': offset
-                })
-    return event_list
-
-
-def compute_dcase_metrics(targets: np.ndarray, predictions: np.ndarray, classes: list, post_process=False) -> Metrics:
-    threshold = 0.5
-    predictions = np.where(predictions >= threshold, 1, 0)
-    if post_process:
-        predictions = utils.median_filter_predictions(predictions, frame_size=10)
-    # create metric classes and get lists
-    dcase2013metric = DCASE2013_EventDetection_Metrics(class_list=classes)
-    dcase2016_metric = DCASE2016_EventDetection_SegmentBasedMetrics(class_list=classes)
-    if len(targets.shape) == 3:  # concatenate batches
-        predictions = np.concatenate([*predictions], axis=1)
-        targets = np.concatenate([*targets], axis=1)
-    system_output = get_event_list(predictions, classes)
-    annotated_groundtruth = get_event_list(targets, classes)
-    # get dcase metrics
-    frame_based_metrics = dcase2013metric.frame_based(annotated_groundtruth, system_output)
-    even_based_metrics = dcase2013metric.event_based(annotated_groundtruth, system_output)
-    class_based_metrics = dcase2013metric.class_based(annotated_groundtruth, system_output)
-    segment_based_metrics = dcase2016_metric.evaluate(annotated_groundtruth, system_output).results()
-    return Metrics(frame_based_metrics, even_based_metrics, class_based_metrics, segment_based_metrics)
-
-
 if __name__ == '__main__':
     np.random.seed(1)
     test_excerpt_length = 32
@@ -204,10 +113,10 @@ if __name__ == '__main__':
     test_classes = ["bird singing", "children shouting", "wind blowing"]
     test_path = 'results/metrics'
     test_update = 1
-    test_metrics = compute_dcase_metrics(test_targets, test_predictions, test_classes)
-    write_dcase_metrics_to_file(test_metrics, os.path.join('results', 'metrics'), 'test')
+    test_metrics = metric.compute_dcase_metrics(test_targets, test_predictions, test_classes)
+    metric.write_dcase_metrics_to_file(test_metrics, os.path.join('results', 'metrics'), 'test')
     test_predictions = np.where(np.random.rand(16, 3, test_excerpt_length) >= 0.99, 1, 0)
-    test_metrics2 = compute_dcase_metrics(test_targets, test_predictions, test_classes)
+    test_metrics2 = metric.compute_dcase_metrics(test_targets, test_predictions, test_classes)
     test_metrics_list = [test_metrics, test_metrics, test_metrics2]
-    test_metrics = calc_avg_metrics(test_metrics_list)
-    write_dcase_metrics_to_file(test_metrics, os.path.join('results', 'metrics'), 'test_avg')
+    test_metrics = metric.calc_avg_metrics(test_metrics_list)
+    metric.write_dcase_metrics_to_file(test_metrics, os.path.join('results', 'metrics'), 'test_avg')

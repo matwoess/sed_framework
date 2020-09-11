@@ -14,16 +14,16 @@ from torch.utils.tensorboard import SummaryWriter
 import tqdm
 
 import evaluation
-from evaluation import Metrics
-from architectures import SimpleCNN
-from datasets import BaseDataset, ExcerptDataset
-import utils
+import metric
+from architecture import SimpleCNN
+from dataset import BaseDataset, ExcerptDataset
+import util
 
 torch.random.manual_seed(0)  # Set a known random seed for reproducibility
 
 
 def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, classes: list, update: int,
-                   device: torch.device, loss_fn=torch.nn.BCELoss()) -> Tuple[Tensor, Metrics, Metrics]:
+                   device: torch.device, loss_fn=torch.nn.BCELoss()) -> Tuple[Tensor, dict, dict]:
     plots_path = os.path.join('results', 'itermediate', 'plots')
     metrics_path = os.path.join('results', 'itermediate', 'metrics')
     os.makedirs(plots_path, exist_ok=True)
@@ -50,25 +50,26 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
         indices = random.choices(np.arange(len(target_list)), k=num_plots)
         targets = np.stack([t for i, t in enumerate(target_list) if i in indices])
         predictions = np.stack([t for i, t in enumerate(prediction_list) if i in indices])
-        utils.plot(targets, predictions, classes, plots_path, update)
+        util.plot(targets, predictions, classes, plots_path, update)
         # compute dcase metrics
         targets = np.stack(target_list)
         predictions = np.stack(prediction_list)
-        metrics = evaluation.compute_dcase_metrics(targets, predictions, classes)
-        metrics_pp = evaluation.compute_dcase_metrics(targets, predictions, classes, post_process=True)
-        evaluation.write_dcase_metrics_to_file(metrics, metrics_path, f"{update:07d}.txt")
-        evaluation.write_dcase_metrics_to_file(metrics_pp, metrics_path, f"{update:07d}_pp.txt")
+        metrics = metric.compute_dcase_metrics(targets, predictions, classes)
+        metrics_pp = metric.compute_dcase_metrics(targets, predictions, classes, post_process=True)
+        metric.write_dcase_metrics_to_file(metrics, metrics_path, f"{update:07d}.txt")
+        metric.write_dcase_metrics_to_file(metrics_pp, metrics_path, f"{update:07d}_pp.txt")
     return loss, metrics, metrics_pp
 
 
 def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict, eval_settings: dict, fft_params: dict,
          device: torch.device = torch.device("cuda:0")):
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
+    os.makedirs('results', exist_ok=True)
     experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f' - {feature_type} - {scene}'
-    writer = SummaryWriter(log_dir=os.path.join('results', 'tensorboard', experiment_id))
+    writer = SummaryWriter(log_dir=os.path.join('tensorboard', experiment_id))
     training_dataset = BaseDataset(feature_type, scene, hyper_params, fft_params)
     # create network
-    classes = utils.get_scene_classes(scene)
+    classes = util.get_scene_classes(scene)
     network_config['out_features'] = len(classes)
     if feature_type == 'spec':
         network_config['n_features'] = fft_params['hop_size'] + 1
@@ -155,14 +156,14 @@ def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict
     evaluation.final_evaluation(feature_type, scene, hyper_params, network_config, fft_params, model_path, device,
                                 writer)
     print('zipping "results" folder...')
-    utils.zip_folder('results', f'results_{scene}')
+    util.zip_folder('results', f'results_{scene}')
     print('deleting "results" folder')
     import shutil
     shutil.rmtree('./results')
 
 
 def log_validation_params(writer: SummaryWriter, val_loss: Tensor, params: Iterator[Parameter],
-                          metrics: Metrics, metrics_pp: Metrics, update: int) -> Tuple[float, float]:
+                          metrics: dict, metrics_pp: dict, update: int) -> Tuple[float, float]:
     writer.add_scalar(tag="validation/loss", scalar_value=val_loss, global_step=update)
     # Add weights to tensorboard
     for i, param in enumerate(params):
@@ -170,34 +171,16 @@ def log_validation_params(writer: SummaryWriter, val_loss: Tensor, params: Itera
     # Add gradients to tensorboard
     for i, param in enumerate(params):
         writer.add_histogram(tag=f'validation/gradients_{i}', values=param.grad.cpu(), global_step=update)
-    write_categories = ['dcase/segment_based/overall',
-                        'dcase/segment_based/class_wise_average',
-                        'dcase_pp/segment_based/overall',
-                        'dcase_pp/segment_based/class_wise_average',
-                        'dcase/event_based/onset',
-                        'dcase/event_based/onset-offset',
-                        'dcase_pp/event_based/onset',
-                        'dcase_pp/event_based/onset-offset'
-                        ]
-    write_scalars = ['F', 'ER']
 
-    def write_metric_dict(m_dict: dict, identifier: str):
-        for key in m_dict.keys():
-            if type(m_dict[key]) == dict:
-                write_metric_dict(m_dict[key], '/'.join([identifier, key]))
-            elif key in write_scalars and identifier in write_categories:
-                tag = '/'.join([identifier.replace('dcase', f'dcase_{key}'), key])
-                writer.add_scalar(tag=tag, scalar_value=m_dict[key], global_step=update)
+    def write_metrics(m_dict: dict, identifier: str):
+        flat_metrics = util.flatten_dict(m_dict, identifier)
+        filtered_metrics = metric.filter_metrics_dict(flat_metrics)
+        for key in filtered_metrics:
+            writer.add_scalar(tag=key, scalar_value=filtered_metrics[key], global_step=update)
 
-    def write_metrics(metrics: Metrics, identifier: str):
-        write_metric_dict(metrics.segment_based, '/'.join([identifier, 'segment_based']))
-        write_metric_dict(metrics.event_based, '/'.join([identifier, 'event_based']))
-        write_metric_dict(metrics.class_based, '/'.join([identifier, 'class_based']))
-        write_metric_dict(metrics.frame_based, '/'.join([identifier, 'frame_based']))
-
-    write_metrics(metrics, 'dcase')
-    write_metrics(metrics_pp, 'dcase_pp')
-    return metrics.segment_based['overall']['F'], metrics.segment_based['overall']['ER']
+    write_metrics(metrics, 'metric')
+    write_metrics(metrics_pp, 'metric_pp')
+    return metrics['segment_based']['overall']['F'], metrics['segment_based']['overall']['ER']
 
 
 if __name__ == '__main__':

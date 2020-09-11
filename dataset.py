@@ -13,13 +13,13 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 import augment
-import utils
+import util
 
 
 class SceneDataset(Dataset):
     def __init__(self, feature_type: str, scene: str, hyper_params: dict, fft_params: dict, data_path: str):
         self.scene = scene
-        self.classes = utils.get_scene_classes(scene)
+        self.classes = util.get_scene_classes(scene)
         self.feature_type = feature_type
         self.excerpt_size = hyper_params['excerpt_size']
         self.data_path = data_path
@@ -144,11 +144,11 @@ class BaseDataset(Dataset):
     def __init__(self, feature_type: str, scene: str, hyper_params: dict, fft_params: dict,
                  data_path: str = os.path.join('data', 'dev')):
         if not os.path.exists(data_path):
-            utils.download_dataset()
+            util.download_dataset()
         self.data_path = data_path
         self.home_dataset = None
         self.residential_dataset = None
-        self.classes = utils.get_scene_classes(scene)
+        self.classes = util.get_scene_classes(scene)
         self.datasets = []
         if scene in ['indoor', 'all']:
             self.datasets.append(SceneDataset(feature_type, 'indoor', hyper_params, fft_params, data_path))
