@@ -95,5 +95,5 @@ def write_dcase_metrics_to_file(metrics: dict, folder, file) -> None:
     with open(os.path.join(folder, f'{file}.txt'), 'w') as f:
         print(f"=== DCASE2016 - segment based ===\n", file=f)
         print(get_dict_string(metrics['segment_based']), file=f)
-        print(f"=== DCASE2013 - event based ===\n", file=f)
+        print(f"=== DCASE2016 - event based ===\n", file=f)
         print(get_dict_string(metrics['event_based']), file=f)
