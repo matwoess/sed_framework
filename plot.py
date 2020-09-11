@@ -67,3 +67,16 @@ class Plotter:
             plt.close(fig)
 
         self.semaphore.release()
+
+
+if __name__ == '__main__':
+    np.random.seed(0)
+    test_excerpt_length = 32
+    test_targets = np.random.randint(low=0, high=1 + 1, size=(16, 3, test_excerpt_length))
+    test_predictions = np.random.rand(16, 3, test_excerpt_length)
+    test_classes = ["bird singing", "children shouting", "wind blowing"]
+    test_path = 'results/plots'
+    test_update = 1
+    plotter = Plotter(test_classes, 512, 22050)
+    plotter.plot(test_targets, test_predictions, test_path, test_update)
+    plotter.plot(test_targets, test_predictions, test_path, test_update + 1, post_process=True)

@@ -6,7 +6,6 @@ from typing import List
 import numpy as np
 import requests
 import tqdm
-from matplotlib import pyplot as plt
 from scipy.ndimage import median_filter
 
 
@@ -112,14 +111,5 @@ def zip_folder(folder: str, zipfile_name: str):
 
 
 if __name__ == '__main__':
-    # download_dataset()
-    np.random.seed(0)
-    test_excerpt_length = 32
-    test_targets = np.random.randint(low=0, high=1 + 1, size=(16, 3, test_excerpt_length))
-    test_predictions = np.random.rand(16, 3, test_excerpt_length)
-    test_classes = ["bird singing", "children shouting", "wind blowing"]
-    test_path = 'results/plots'
-    test_update = 1
-    # plot(test_targets, test_predictions, test_classes, test_path, test_update)
-    # plot(test_targets, test_predictions, test_classes, test_path, test_update + 1, post_process=True)
-    # zip_folder('results')
+    download_dataset()
+    zip_folder('results')

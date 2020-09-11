@@ -97,7 +97,6 @@ def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict
     train_stats_at = eval_settings['train_stats_at']
     validate_at = eval_settings['validate_at']
     best_validation_loss = np.inf  # best validation loss so far
-    best_f_score = 0
     progress_bar = tqdm.tqdm(total=hyper_params['n_updates'], desc=f"loss: {np.nan:7.5f}", position=0)
     update = 0  # current update counter
 
@@ -139,9 +138,9 @@ def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict
                 print(f'f_score: {f_score}')
                 print(f'err_rate: {err_rate}')
                 # Save best model for early stopping
-                if f_score > best_f_score:
-                    print(f'{f_score} > {best_f_score}... saving as new {os.path.split(model_path)[-1]}')
-                    best_f_score = f_score
+                if val_loss < best_validation_loss:
+                    print(f'{val_loss} < {best_validation_loss}... saving as new {os.path.split(model_path)[-1]}')
+                    best_validation_loss = val_loss
                     torch.save(net, model_path)
 
             # update progress and update-counter
