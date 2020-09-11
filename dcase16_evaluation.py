@@ -697,8 +697,8 @@ class DCASE2016_EventDetection_EventBasedMetrics(EventDetectionMetrics):
 
         Ntp = numpy.sum(sys_correct)
 
-        sys_leftover = numpy.nonzero(numpy.negative(sys_correct))[0]
-        ref_leftover = numpy.nonzero(numpy.negative(ref_correct))[0]
+        sys_leftover = numpy.nonzero(numpy.invert(sys_correct))[0]  # changed from np.negative to invert
+        ref_leftover = numpy.nonzero(numpy.invert(ref_correct))[0]  # changed from np.negative to invert
 
         # Substitutions
         Nsubs = 0
