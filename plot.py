@@ -5,7 +5,7 @@ from queue import Queue
 
 import numpy as np
 
-from util import median_filter_predictions
+import util
 from matplotlib import pyplot as plt
 
 
@@ -32,7 +32,8 @@ class Plotter:
         os.makedirs(path, exist_ok=True)
         thresh_predictions = np.where(predictions >= self.threshold, 1, 0)
         if post_process:
-            thresh_predictions = median_filter_predictions(thresh_predictions, frame_size=10)
+            # thresh_predictions = util.median_filter_predictions(thresh_predictions, frame_size=10)
+            thresh_predictions = util.post_process_predictions(thresh_predictions)
         errors = thresh_predictions != targets
         # create subplots for targets, predictions and errors
         to_plot = [targets, thresh_predictions, errors]
@@ -71,10 +72,11 @@ class Plotter:
 
 if __name__ == '__main__':
     np.random.seed(0)
+    test_batches = 16
     test_excerpt_length = 32
-    test_targets = np.random.randint(low=0, high=1 + 1, size=(16, 3, test_excerpt_length))
-    test_predictions = np.random.rand(16, 3, test_excerpt_length)
     test_classes = ["bird singing", "children shouting", "wind blowing"]
+    test_targets = np.random.randint(low=0, high=1 + 1, size=(test_batches, len(test_classes), test_excerpt_length))
+    test_predictions = np.random.rand(test_batches, len(test_classes), test_excerpt_length)
     test_path = 'results/plots'
     test_update = 1
     plotter = Plotter(test_classes, 512, 22050)

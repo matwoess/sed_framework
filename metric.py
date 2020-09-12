@@ -33,7 +33,8 @@ def compute_dcase_metrics(targets: np.ndarray, predictions: np.ndarray, classes:
     threshold = 0.5
     predictions = np.where(predictions >= threshold, 1, 0)
     if post_process:
-        predictions = util.median_filter_predictions(predictions, frame_size=10)
+        # predictions = util.median_filter_predictions(predictions, frame_size=10)
+        predictions = util.post_process_predictions(predictions)
     # create metric classes and get lists
     dcase2016_segment_based = DCASE2016_EventDetection_SegmentBasedMetrics(class_list=classes)
     dcase2016_event_based = DCASE2016_EventDetection_EventBasedMetrics(class_list=classes)

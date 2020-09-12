@@ -1,11 +1,11 @@
 {
-  "device": "cuda:0",
+  "device": "cpu",
   "hyper_params": {
     "excerpt_size": 384,
     "batch_size": 16,
     "learning_rate": 1e-5,
     "weight_decay": 1e-6,
-    "n_updates": 5e3,
+    "n_updates": 7e3,
     "train_overlap_factor": 4,
     "rnd_augment": true
   },
