@@ -62,8 +62,8 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
     return loss, metrics, metrics_pp
 
 
-def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict, eval_settings: dict, fft_params: dict,
-         device: torch.device = torch.device("cuda:0")):
+def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, network_config: dict, eval_settings: dict,
+         fft_params: dict, device: torch.device = torch.device("cuda:0")):
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
     os.makedirs('results', exist_ok=True)
     experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f' - {feature_type} - {scene}'
@@ -96,20 +96,25 @@ def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict
 
     train_stats_at = eval_settings['train_stats_at']
     validate_at = eval_settings['validate_at']
-    best_validation_loss = np.inf  # best validation loss so far
+    best_loss = np.inf  # best validation loss so far
     progress_bar = tqdm.tqdm(total=hyper_params['n_updates'], desc=f"loss: {np.nan:7.5f}", position=0)
     update = 0  # current update counter
 
     fold_idx = 0
     rnd_augment = hyper_params['rnd_augment']
-    train_subset = Subset(training_dataset, training_dataset.get_fold_indices(fold_idx)[0])
-    val_subset = Subset(training_dataset, training_dataset.get_fold_indices(fold_idx)[1])
+    if eval_mode:
+        train_subset = training_dataset
+        val_loader = None
+    else:
+        train_subset = Subset(training_dataset, training_dataset.get_fold_indices(fold_idx)[0])
+        val_subset = Subset(training_dataset, training_dataset.get_fold_indices(fold_idx)[1])
+        val_set = ExcerptDataset(val_subset, feature_type, classes, hyper_params['excerpt_size'],
+                                 fft_params, overlap_factor=1, rnd_augment=False)
+        val_loader = DataLoader(val_set, batch_size=hyper_params['batch_size'], shuffle=False, num_workers=0)
+
     train_set = ExcerptDataset(train_subset, feature_type, classes, hyper_params['excerpt_size'],
                                fft_params, overlap_factor=hyper_params['train_overlap_factor'], rnd_augment=rnd_augment)
-    val_set = ExcerptDataset(val_subset, feature_type, classes, hyper_params['excerpt_size'],
-                             fft_params, overlap_factor=1, rnd_augment=False)
     train_loader = DataLoader(train_set, batch_size=hyper_params['batch_size'], shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_set, batch_size=hyper_params['batch_size'], shuffle=False, num_workers=0)
 
     n_updates = hyper_params['n_updates']
     while update <= n_updates:
@@ -129,18 +134,31 @@ def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict
                 # log training loss
                 writer.add_scalar(tag="training/loss", scalar_value=loss.cpu(), global_step=update)
 
-            if update % validate_at == 0 and update > 0:
+            if not eval_mode and update % validate_at == 0 and update > 0:
                 # Evaluate model on validation set (after every complete training fold)
                 val_loss, metrics, metrics_pp = validate_model(net, val_loader, classes, update, device, plotter)
                 print(f'val_loss: {val_loss}')
-                params = net.parameters()
-                f_score, err_rate = log_validation_params(writer, val_loss, params, metrics, metrics_pp, update)
+                f_score = metrics['segment_based']['overall']['F']
+                err_rate = metrics['segment_based']['overall']['ER']
+                f_score_pp = metrics_pp['segment_based']['overall']['F']
+                err_rate_pp = metrics_pp['segment_based']['overall']['ER']
                 print(f'f_score: {f_score}')
                 print(f'err_rate: {err_rate}')
+                print(f'f_score_pp: {f_score_pp}')
+                print(f'err_rate_pp: {err_rate_pp}')
+                params = net.parameters()
+                log_validation_params(writer, val_loss, params, metrics, metrics_pp, update)
                 # Save best model for early stopping
-                if val_loss < best_validation_loss:
-                    print(f'{val_loss} < {best_validation_loss}... saving as new {os.path.split(model_path)[-1]}')
-                    best_validation_loss = val_loss
+                if val_loss < best_loss:
+                    print(f'{val_loss} < {best_loss}... saving as new {os.path.split(model_path)[-1]}')
+                    best_loss = val_loss
+                    torch.save(net, model_path)
+
+            if eval_mode:
+                train_loss = loss.cpu()
+                if train_loss < best_loss:
+                    print(f'{train_loss} < {best_loss}... saving as new {os.path.split(model_path)[-1]}')
+                    best_loss = train_loss
                     torch.save(net, model_path)
 
             # update progress and update-counter
@@ -157,14 +175,14 @@ def main(feature_type: str, scene: str, hyper_params: dict, network_config: dict
     evaluation.final_evaluation(feature_type, scene, hyper_params, network_config, fft_params, model_path, device,
                                 writer, plotter)
     print('zipping "results" folder...')
-    util.zip_folder('results', f'results_{scene}')
+    util.zip_folder('results', f'results_{feature_type}_{scene}')
     print('deleting "results" folder')
     import shutil
     shutil.rmtree('./results')
 
 
 def log_validation_params(writer: SummaryWriter, val_loss: Tensor, params: Iterator[Parameter],
-                          metrics: dict, metrics_pp: dict, update: int) -> Tuple[float, float]:
+                          metrics: dict, metrics_pp: dict, update: int) -> None:
     writer.add_scalar(tag="validation/loss", scalar_value=val_loss, global_step=update)
     # Add weights to tensorboard
     for i, param in enumerate(params):
@@ -181,7 +199,6 @@ def log_validation_params(writer: SummaryWriter, val_loss: Tensor, params: Itera
 
     write_metrics(metrics, 'metric')
     write_metrics(metrics_pp, 'metric_pp')
-    return metrics['segment_based']['overall']['F'], metrics['segment_based']['overall']['ER']
 
 
 if __name__ == '__main__':
@@ -192,11 +209,14 @@ if __name__ == '__main__':
     parser.add_argument('feature_type', help='"spec", "mels" or "mfcc"', type=str)
     parser.add_argument('scene', help='"indoor", "outdoor" or "all"', type=str)
     parser.add_argument('config_file', help='path to config file', type=str)
+    parser.add_argument('-eval', help='train on whole development set for maximum eval set score', required=False,
+                        dest='eval_mode', action='store_true', default=False)
     args = parser.parse_args()
     feature_type_arg = args.feature_type
     scene_arg = args.scene
     config_file_arg = args.config_file
+    eval_mode_arg = args.eval_mode
 
     with open(config_file_arg, 'r') as fh:
         config_args = json.load(fh)
-    main(feature_type_arg, scene_arg, **config_args)
+    main(eval_mode_arg, feature_type_arg, scene_arg, **config_args)

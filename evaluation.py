@@ -55,7 +55,11 @@ def final_evaluation(feature_type: str, scene: str, hyper_params: dict, network_
     for key in fft_params.keys():
         all_params[key] = fft_params[key]
     flat_results = util.flatten_dict(avg_eval_metrics, 'h_param')
+    flat_results_pp = util.flatten_dict(avg_eval_pp_metrics, 'h_param_pp')
     filtered_results = metric.filter_metrics_dict(flat_results)
+    filtered_results_pp = metric.filter_metrics_dict(flat_results_pp)
+    for key in filtered_results_pp.keys():
+        filtered_results[key] = filtered_results_pp[key]
     writer.add_hparams(all_params, filtered_results)
 
 
