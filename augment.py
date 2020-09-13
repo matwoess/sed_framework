@@ -17,6 +17,8 @@ def apply_random_augmentations(spectrogram: np.ndarray) -> np.ndarray:
 
 def apply_random_stretching(spectrogram: np.ndarray, factor: float = 0.3) -> np.ndarray:
     stretch = 1 + random.random() * factor
+    if random.random() >= 0.5:
+        stretch *= -1
     shift = 1  # + random.random() * factor
     spectrogram = scipy.ndimage.affine_transform(spectrogram, np.array((1 / stretch, 1 / shift)))
     return spectrogram

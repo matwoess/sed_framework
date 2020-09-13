@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 import os
 import threading
-from queue import Queue
 
 import numpy as np
+from matplotlib import pyplot as plt
 
 import util
-from matplotlib import pyplot as plt
 
 
 class Plotter:

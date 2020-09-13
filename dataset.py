@@ -13,6 +13,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 import augment
+import misc
 import util
 
 
@@ -144,7 +145,7 @@ class BaseDataset(Dataset):
     def __init__(self, feature_type: str, scene: str, hyper_params: dict, fft_params: dict,
                  data_path: str = os.path.join('data', 'dev')):
         if not os.path.exists(data_path):
-            util.download_dataset()
+            misc.download_dataset()
         self.data_path = data_path
         self.home_dataset = None
         self.residential_dataset = None

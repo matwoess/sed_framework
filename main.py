@@ -4,20 +4,20 @@ import random
 from datetime import datetime
 from typing import Tuple, Iterator
 
+import numpy as np
 import torch
 import torch.utils.data
-import numpy as np
+import tqdm
 from torch import Tensor
 from torch.nn import Parameter
 from torch.utils.data import Subset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
-import tqdm
 
 import evaluation
 import metric
+import util
 from architecture import SimpleCNN
 from dataset import BaseDataset, ExcerptDataset
-import util
 from plot import Plotter
 
 torch.random.manual_seed(0)  # Set a known random seed for reproducibility
