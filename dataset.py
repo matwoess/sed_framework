@@ -194,13 +194,13 @@ class BaseDataset(Dataset):
 
 class ExcerptDataset(Dataset):
     def __init__(self, dataset: Dataset, feature_type: str, classes: list, excerpt_size: int, fft_params: dict,
-                 overlap_factor: int = 1, rnd_augment: bool = False):
+                 excerpts_per_file: int = -1, rnd_augment: bool = False):
         self.dataset = dataset
         self.feature_type = feature_type
         self.excerpt_size = excerpt_size
         self.classes = classes
         self.fft_params = fft_params
-        self.overlap_factor = overlap_factor
+        self.excerpts_per_file = excerpts_per_file
         self.rnd_augment = rnd_augment
 
         self.feature_excerpts = None
@@ -229,7 +229,6 @@ class ExcerptDataset(Dataset):
         feature_excerpts = []
         excerpt_targets = []
         audio_files = []
-        hop = self.excerpt_size // self.overlap_factor
         for idx, data in enumerate(self.dataset):
             feature, targets, sr, audio_file, _ = data
             if self.rnd_augment:
@@ -242,9 +241,9 @@ class ExcerptDataset(Dataset):
                 feature = librosa.feature.mfcc(S=feature, n_mfcc=self.fft_params['n_mfcc'])
             feature_count = feature.shape[0]
             sequence_positions = feature.shape[1]
-            n_excerpts = int(np.ceil(sequence_positions / hop))
-            for i in range(n_excerpts):
-                begin_idx = i * hop
+            excerpts_indices = self.get_excerpt_indices(sequence_positions)
+
+            for begin_idx in excerpts_indices:
                 end_idx = min(begin_idx + self.excerpt_size, sequence_positions)
                 feature_excerpt = np.zeros(shape=(feature_count, self.excerpt_size))
                 target_excerpt = np.zeros(shape=(len(self.classes), self.excerpt_size))
@@ -253,8 +252,20 @@ class ExcerptDataset(Dataset):
                 feature_excerpts.append(feature_excerpt)
                 excerpt_targets.append(target_excerpt)
                 audio_files.append(audio_file)
-            excerpt_count += n_excerpts
+
+            excerpt_count += len(excerpts_indices)
         return feature_excerpts, excerpt_targets, audio_files, excerpt_count
+
+    def get_excerpt_indices(self, sequence_positions):
+        if self.excerpts_per_file == -1:
+            hop = self.excerpt_size
+            n_excerpts = int(np.ceil(sequence_positions / hop))
+            indices = [i * hop for i in range(n_excerpts)]
+        else:
+            n_excerpts = self.excerpts_per_file
+            max_idx = sequence_positions - self.excerpt_size
+            indices = [np.random.randint(low=0, high=max_idx) for _ in range(n_excerpts)]
+        return indices
 
     def __len__(self):
         return self.excerpt_count
