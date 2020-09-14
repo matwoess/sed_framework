@@ -55,8 +55,8 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
         # compute dcase metrics
         targets = np.stack(target_list)
         predictions = np.stack(prediction_list)
-        metrics = metric.compute_dcase_metrics(targets, predictions, classes)
-        metrics_pp = metric.compute_dcase_metrics(targets, predictions, classes, post_process=True)
+        metrics = metric.compute_dcase_metrics([targets], [predictions], classes)
+        metrics_pp = metric.compute_dcase_metrics([targets], [predictions], classes, post_process=True)
         metric.write_dcase_metrics_to_file(metrics, metrics_path, f"{update:07d}.txt")
         metric.write_dcase_metrics_to_file(metrics_pp, metrics_path, f"{update:07d}_pp.txt")
     return loss, metrics, metrics_pp

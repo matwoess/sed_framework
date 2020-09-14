@@ -7,18 +7,9 @@ import scipy.ndimage
 random.seed(0)
 
 
-def apply_random_augmentations(spectrogram: np.ndarray) -> np.ndarray:
-    spectrogram = apply_random_stretching(spectrogram)
-    spectrogram = apply_random_noise(spectrogram)
-    spectrogram = apply_random_db_alteration(spectrogram)
-    spectrogram = apply_random_excerpt_filter(spectrogram)
-    return spectrogram
-
-
 def apply_random_stretching(spectrogram: np.ndarray, factor: float = 0.3) -> np.ndarray:
     stretch = 1 + random.random() * factor
-    if random.random() >= 0.5:
-        stretch *= -1
+    factor *= 1 if random.random() >= 0.5 else -1  # invert on half the cases
     shift = 1  # + random.random() * factor
     spectrogram = scipy.ndimage.affine_transform(spectrogram, np.array((1 / stretch, 1 / shift)))
     return spectrogram
@@ -54,6 +45,14 @@ def apply_normalization(feature: np.ndarray) -> np.ndarray:
     feature -= mean
     feature /= std
     return feature
+
+
+def apply_random_augmentations(spectrogram: np.ndarray) -> np.ndarray:
+    spectrogram = apply_random_stretching(spectrogram)
+    spectrogram = apply_random_noise(spectrogram)
+    spectrogram = apply_random_db_alteration(spectrogram)
+    spectrogram = apply_random_excerpt_filter(spectrogram)
+    return spectrogram
 
 
 if __name__ == '__main__':

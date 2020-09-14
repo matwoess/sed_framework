@@ -5,7 +5,7 @@ import requests
 import tqdm
 
 
-def download_url(url, save_path, description, chunk_size=4096):
+def download_url(url, save_path, description, chunk_size=16384):
     r = requests.get(url, stream=True)
     with open(save_path, 'wb') as fd:
         total_length = int(r.headers.get('content-length'))
