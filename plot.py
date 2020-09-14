@@ -25,7 +25,7 @@ class Plotter:
                          args=(targets, predictions, path, identifier, post_process, to_seconds)).start()
 
     def plot_thread(self, targets: np.ndarray, predictions: np.ndarray, path: str, identifier,
-                    post_process: bool, to_seconds: bool):
+                    post_process: bool, to_seconds: bool) -> None:
         self.semaphore.acquire(blocking=True)
         # compute errors
         os.makedirs(path, exist_ok=True)

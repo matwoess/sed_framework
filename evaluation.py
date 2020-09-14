@@ -39,8 +39,7 @@ def final_evaluation(feature_type: str, scene: str, hyper_params: dict, network_
     metric.write_dcase_metrics_to_file(metrics_eval, os.path.join('results', 'final', 'metrics'), 'eval_average')
     metric.write_dcase_metrics_to_file(metrics_dev, os.path.join('results', 'final', 'metrics'), 'dev_average')
     metric.write_dcase_metrics_to_file(metrics_pp_eval, os.path.join('results', 'final_pp', 'metrics'), 'eval_average')
-    metric.write_dcase_metrics_to_file(metrics_pp_dev, os.path.join('results', 'final_pp', 'metrics'),
-                                       'dev_average_new')
+    metric.write_dcase_metrics_to_file(metrics_pp_dev, os.path.join('results', 'final_pp', 'metrics'), 'dev_average')
 
     # log hyper parameters and metrics to tensorboard
     all_params = {}

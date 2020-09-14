@@ -43,7 +43,7 @@ class SceneDataset(Dataset):
         self.audio_files = data['audio_files']
         self.fold_indices = data['fold_indices']
 
-    def create_data_file(self, dataset_file):
+    def create_data_file(self, dataset_file) -> dict:
         sub_folder = 'residential_area' if self.scene == 'outdoor' else 'home'
         scene_audio_path = os.path.join(self.data_path, 'audio', sub_folder)
         audio_files = sorted(glob.glob(os.path.join(scene_audio_path, '**/*.wav'), recursive=True))
@@ -87,7 +87,7 @@ class SceneDataset(Dataset):
         return target_array
 
     @staticmethod
-    def get_fold_indices(audio_files, folds):
+    def get_fold_indices(audio_files, folds) -> list:
         fold_indices = []
         for fold in folds:
             train_indices, val_indices = [], []
@@ -101,7 +101,7 @@ class SceneDataset(Dataset):
         return fold_indices
 
     @staticmethod
-    def read_annotations(meta_path):
+    def read_annotations(meta_path) -> list:
         annotations = []
         annotation_files = sorted(glob.glob(os.path.join(meta_path, '**/*.ann'), recursive=True))
         for annotation_file in annotation_files:
@@ -114,7 +114,7 @@ class SceneDataset(Dataset):
         return annotations
 
     @staticmethod
-    def get_folds(data_path: str, scene: str, num_folds: int = 4):
+    def get_folds(data_path: str, scene: str, num_folds: int = 4) -> list:
         folds = []
         for i in range(1, num_folds + 1):
             train_fold = os.path.join(data_path, 'evaluation_setup', f'{scene}_fold{i}_train.txt')

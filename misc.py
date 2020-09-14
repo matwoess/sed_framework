@@ -5,7 +5,7 @@ import requests
 import tqdm
 
 
-def download_url(url, save_path, description, chunk_size=16384):
+def download_url(url, save_path, description, chunk_size=16384) -> None:
     r = requests.get(url, stream=True)
     with open(save_path, 'wb') as fd:
         total_length = int(r.headers.get('content-length'))
@@ -14,7 +14,7 @@ def download_url(url, save_path, description, chunk_size=16384):
             fd.write(chunk)
 
 
-def download_dataset(data_path: str = 'data'):
+def download_dataset(data_path: str = 'data') -> None:
     print('downloading dataset files...')
     os.makedirs(data_path, exist_ok=True)
     url_dev_data = 'https://zenodo.org/record/45759/files/TUT-sound-events-2016-development.audio.zip?download=1'

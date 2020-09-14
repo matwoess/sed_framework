@@ -78,7 +78,7 @@ def post_process_predictions(array: np.ndarray, min_event_len=0.1, min_gap=0.1, 
     return array
 
 
-def flatten_dict(dictionary: dict, root: str = '', separator: str = '/'):
+def flatten_dict(dictionary: dict, root: str = '', separator: str = '/') -> dict:
     def flatten(obj, string=''):
         if type(obj) == dict:
             string = string + separator if string else string
@@ -91,7 +91,7 @@ def flatten_dict(dictionary: dict, root: str = '', separator: str = '/'):
     return flat_dict
 
 
-def zip_folder(folder: str, zipfile_name: str):
+def zip_folder(folder: str, zipfile_name: str) -> None:
     archive = zipfile.ZipFile(f'{zipfile_name}.zip', 'w', zipfile.ZIP_DEFLATED)
     for root, dirs, files in os.walk(folder):
         for file in files:

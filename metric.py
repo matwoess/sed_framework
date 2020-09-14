@@ -8,7 +8,7 @@ import util
 from dcase16_evaluation import DCASE2016_EventDetection_SegmentBasedMetrics, DCASE2016_EventDetection_EventBasedMetrics
 
 
-def get_event_list(batch: np.ndarray, classes: list, time_factor=512 / 22050) -> List:
+def get_event_list(batch: np.ndarray, classes: list, time_factor=512 / 22050) -> list:
     event_list = []
     for cls_idx, cls in enumerate(batch):
         event = False

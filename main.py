@@ -20,7 +20,9 @@ from architecture import SimpleCNN
 from dataset import BaseDataset, ExcerptDataset
 from plot import Plotter
 
-torch.random.manual_seed(0)  # Set a known random seed for reproducibility
+# Set a known random seed for reproducibility
+torch.random.manual_seed(0)
+np.random.seed(0)
 
 
 def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, classes: list, update: int,
@@ -63,7 +65,7 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
 
 
 def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, network_config: dict, eval_settings: dict,
-         fft_params: dict, device: torch.device = torch.device("cuda:0")):
+         fft_params: dict, device: torch.device = torch.device("cuda:0")) -> None:
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
     os.makedirs('results', exist_ok=True)
     experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f' - {feature_type} - {scene}'
