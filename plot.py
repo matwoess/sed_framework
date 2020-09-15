@@ -15,20 +15,22 @@ class Plotter:
         self.label_size = 6 if len(classes) < 12 else 4
         self.cmap = ['b', 'r', 'g', 'y', 'k', 'c', 'm']
         self.time_factor = hop_size / sampling_rate
-
+        # access pyplot only by one thread at a time
         self.semaphore = threading.Semaphore(value=1)
 
     def plot(self, targets: np.ndarray, predictions: np.ndarray, path: str, identifier,
              post_process=False, to_seconds=False) -> None:
         print('plotting results...')
+        # start plotting in background
         threading.Thread(target=self.plot_thread,
                          args=(targets, predictions, path, identifier, post_process, to_seconds)).start()
 
     def plot_thread(self, targets: np.ndarray, predictions: np.ndarray, path: str, identifier,
                     post_process: bool, to_seconds: bool) -> None:
+        # aquire access to pyplot
         self.semaphore.acquire(blocking=True)
-        # compute errors
         os.makedirs(path, exist_ok=True)
+        # compute errors
         thresh_predictions = np.where(predictions >= self.threshold, 1, 0)
         if post_process:
             # thresh_predictions = util.median_filter_predictions(thresh_predictions, frame_size=10)
@@ -40,13 +42,15 @@ class Plotter:
         batches = targets.shape[0]
         length = targets.shape[-1]
         x_factor = 1
+        # covert x-axis from sequence position to seconds
         if to_seconds:
             x_factor = self.time_factor
             length = int(length * x_factor)
-
+        # create separate plot for each sample in batch
         for b in range(batches):
             plt.rc('ytick', labelsize=self.label_size)
             fig, ax = plt.subplots(3, 1)
+            # set up axis descriptions and dimensions
             plt.setp(ax, yticklabels=self.classes, yticks=np.arange(len(self.classes)),
                      xlim=(-5, length + 5), ylim=(-0.5, len(self.classes) - 0.5))
             for a, array in enumerate(to_plot):
@@ -65,7 +69,7 @@ class Plotter:
                 save_path = os.path.join(path, f'{identifier}.png')
             fig.savefig(save_path, dpi=500)
             plt.close(fig)
-
+        # hand over access to pyplot
         self.semaphore.release()
 
 
