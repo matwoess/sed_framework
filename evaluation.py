@@ -22,9 +22,9 @@ def final_evaluation(feature_type: str, scene: str, hyper_params: dict, network_
     dev_dataset = BaseDataset(feature_type, scene, hyper_params, fft_params)
     eval_dataset = BaseDataset(feature_type, scene, hyper_params, fft_params, data_path=os.path.join('data', 'eval'))
     dev_set = ExcerptDataset(dev_dataset, feature_type, classes, hyper_params['excerpt_size'], fft_params,
-                             excerpts_per_file=-1, rnd_augment=False)
+                             overlap_factor=1, rnd_augment=False)
     eval_set = ExcerptDataset(eval_dataset, feature_type, classes, hyper_params['excerpt_size'], fft_params,
-                              excerpts_per_file=-1, rnd_augment=False)
+                              overlap_factor=1, rnd_augment=False)
     dev_loader = DataLoader(dev_set, batch_size=1, shuffle=False, num_workers=0)
     eval_loader = DataLoader(eval_set, batch_size=1, shuffle=False, num_workers=0)
 

@@ -111,11 +111,11 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
         train_subset = Subset(training_dataset, training_dataset.get_fold_indices(fold_idx)[0])
         val_subset = Subset(training_dataset, training_dataset.get_fold_indices(fold_idx)[1])
         val_set = ExcerptDataset(val_subset, feature_type, classes, hyper_params['excerpt_size'],
-                                 fft_params, excerpts_per_file=-1, rnd_augment=False)
+                                 fft_params, overlap_factor=1, rnd_augment=False)
         val_loader = DataLoader(val_set, batch_size=hyper_params['batch_size'], shuffle=False, num_workers=0)
 
     train_set = ExcerptDataset(train_subset, feature_type, classes, hyper_params['excerpt_size'],
-                               fft_params, excerpts_per_file=hyper_params['excerpts_per_file'], rnd_augment=rnd_augment)
+                               fft_params, overlap_factor=hyper_params['train_overlap_factor'], rnd_augment=rnd_augment)
     train_loader = DataLoader(train_set, batch_size=hyper_params['batch_size'], shuffle=True, num_workers=0)
 
     n_updates = hyper_params['n_updates']

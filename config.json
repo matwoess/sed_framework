@@ -6,7 +6,7 @@
     "learning_rate": 1e-5,
     "weight_decay": 1e-6,
     "n_updates": 7e3,
-    "excerpts_per_file": 32,
+    "train_overlap_factor": 4,
     "rnd_augment": true
   },
   "network_config": {
