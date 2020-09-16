@@ -35,6 +35,7 @@ class Plotter:
         if post_process:
             # thresh_predictions = util.median_filter_predictions(thresh_predictions, frame_size=10)
             thresh_predictions = util.post_process_predictions(thresh_predictions)
+            thresh_predictions = util.remove_events_if_background(thresh_predictions)
         errors = thresh_predictions != targets
         # create subplots for targets, predictions and errors
         to_plot = [targets, thresh_predictions, errors]

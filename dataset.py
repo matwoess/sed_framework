@@ -77,13 +77,22 @@ class SceneDataset(Dataset):
     def get_target_array(seq_length: int, classes: list, annotations: list, sr: int, hop_size: int) -> np.ndarray:
         target_array = np.zeros(shape=(len(classes), seq_length))
         for i, cls in enumerate(classes):
-            # get all events for current class
-            class_events = [(float(item['onset'].replace(',', '.')), float(item['offset'].replace(',', '.')))
-                            for item in annotations if item['event'] == cls]
-            for onset, offset in class_events:
-                onset_idx = int(onset * sr / hop_size)
-                offset_idx = int(offset * sr / hop_size)
-                target_array[i, onset_idx:offset_idx] = 1
+            if cls == 'background':
+                target_array[i, :] = 1
+                class_events = [(float(item['onset'].replace(',', '.')), float(item['offset'].replace(',', '.')))
+                                for item in annotations]
+                for onset, offset in class_events:
+                    onset_idx = int(onset * sr / hop_size)
+                    offset_idx = int(offset * sr / hop_size)
+                    target_array[i, onset_idx:offset_idx] = 0
+            else:
+                # get all events for current class
+                class_events = [(float(item['onset'].replace(',', '.')), float(item['offset'].replace(',', '.')))
+                                for item in annotations if item['event'] == cls]
+                for onset, offset in class_events:
+                    onset_idx = int(onset * sr / hop_size)
+                    offset_idx = int(offset * sr / hop_size)
+                    target_array[i, onset_idx:offset_idx] = 1
         return target_array
 
     @staticmethod

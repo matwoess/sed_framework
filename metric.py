@@ -10,7 +10,10 @@ from dcase16_evaluation import DCASE2016_EventDetection_SegmentBasedMetrics, DCA
 
 def get_event_list(batch: np.ndarray, classes: list, time_factor=512 / 22050) -> list:
     event_list = []
+    background_cls_idx = batch.shape[0] - 1
     for cls_idx, cls in enumerate(batch):
+        if cls_idx == background_cls_idx:
+            continue
         event = False
         onset = -1.0
         # offset = -1.0
@@ -36,9 +39,12 @@ def compute_dcase_metrics(targets: List[np.ndarray], predictions: List[np.ndarra
     if post_process:
         # predictions = [util.median_filter_predictions(prediction, frame_size=10) for prediction in predictions]
         predictions = [util.post_process_predictions(prediction) for prediction in predictions]
+        predictions = [util.remove_events_if_background(prediction) for prediction in predictions]
     # create metric classes and get lists
-    dcase2016_segment_based = DCASE2016_EventDetection_SegmentBasedMetrics(class_list=classes)
-    dcase2016_event_based = DCASE2016_EventDetection_EventBasedMetrics(class_list=classes, use_onset_condition=True,
+    metric_classes = [cls for cls in classes if cls != 'background']
+    dcase2016_segment_based = DCASE2016_EventDetection_SegmentBasedMetrics(class_list=metric_classes)
+    dcase2016_event_based = DCASE2016_EventDetection_EventBasedMetrics(class_list=metric_classes,
+                                                                       use_onset_condition=True,
                                                                        use_offset_condition=False)
     for target, prediction in zip(targets, predictions):
         if len(target.shape) == 3:  # concatenate batches

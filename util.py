@@ -31,6 +31,8 @@ def get_scene_classes(scene: str) -> List[str]:
             "people speaking",
             "people walking",
             "wind blowing"])
+    # add a class for "no event"
+    classes.append('background')
     return classes
 
 
@@ -39,6 +41,18 @@ def median_filter_predictions(array: np.ndarray, frame_size: int = 10) -> np.nda
     filter_shape = (*np.ones(n_dimensions - 1, dtype=np.int), frame_size)
     result = median_filter(array, size=filter_shape)
     return result
+
+
+def remove_events_if_background(array: np.ndarray) -> np.ndarray:
+    background_idx = array.shape[1] - 1
+    for b, batch in enumerate(array):
+        for c, class_values in enumerate(batch):
+            if c == background_idx:
+                continue
+            for i in range(array.shape[-1]):
+                if array[b, background_idx, i] == 1:
+                    array[b, c, i] = 0
+    return array
 
 
 def post_process_predictions(array: np.ndarray, min_event_len=0.1, min_gap=0.1, hop_size=512, sr=22050) -> np.ndarray:
