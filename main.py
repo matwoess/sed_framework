@@ -15,6 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import evaluation
 import metric
+import postproc
 import util
 from architecture import SimpleCNN
 from dataset import BaseDataset, ExcerptDataset
@@ -49,7 +50,7 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
             prediction_list.extend([*prediction_array])
         loss /= len(dataloader)
         # pick some excerpts and plot them
-        num_plots = 3
+        num_plots = 4
         indices = random.choices(np.arange(len(target_list)), k=num_plots)
         targets = np.stack([t for i, t in enumerate(target_list) if i in indices])
         predictions = np.stack([t for i, t in enumerate(prediction_list) if i in indices])
@@ -58,15 +59,16 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
         targets = np.stack(target_list)
         predictions = np.stack(prediction_list)
         metrics = metric.compute_dcase_metrics([targets], [predictions], classes)
-        metrics_pp = metric.compute_dcase_metrics([targets], [predictions], classes, post_process=True)
+        metrics_pp = metric.compute_dcase_metrics([targets], [postproc.post_process_predictions(predictions)], classes)
         metric.write_dcase_metrics_to_file(metrics, metrics_path, f"{update:07d}.txt")
         metric.write_dcase_metrics_to_file(metrics_pp, metrics_path, f"{update:07d}_pp.txt")
     return loss, metrics, metrics_pp
 
 
 def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, network_config: dict, eval_settings: dict,
-         fft_params: dict, device: torch.device = torch.device("cuda:0")) -> None:
+         fft_params: dict) -> None:
     """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     os.makedirs('results', exist_ok=True)
     experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f' - {feature_type} - {scene}'
     writer = SummaryWriter(log_dir=os.path.join('tensorboard', experiment_id))
@@ -102,7 +104,7 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
     progress_bar = tqdm.tqdm(total=hyper_params['n_updates'], desc=f"loss: {np.nan:7.5f}", position=0)
     update = 0  # current update counter
 
-    fold_idx = 0
+    fold_idx = 1
     rnd_augment = hyper_params['rnd_augment']
     if eval_mode:
         train_subset = training_dataset
@@ -174,13 +176,11 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
     print('finished training.')
 
     print('starting evaluation...')
-    evaluation.final_evaluation(feature_type, scene, hyper_params, network_config, fft_params, model_path, device,
-                                writer, plotter)
+    evaluator = evaluation.Evaluator(feature_type, scene, hyper_params, network_config, fft_params, model_path, device,
+                                     writer, plotter)
+    evaluator.evaluate()
     print('zipping "results" folder...')
     util.zip_folder('results', f'results_{feature_type}_{scene}')
-    print('deleting "results" folder')
-    import shutil
-    shutil.rmtree('./results')
 
 
 def log_validation_params(writer: SummaryWriter, val_loss: Tensor, params: Iterator[Parameter],

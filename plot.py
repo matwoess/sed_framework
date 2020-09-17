@@ -5,8 +5,6 @@ import threading
 import numpy as np
 from matplotlib import pyplot as plt
 
-import util
-
 
 class Plotter:
     def __init__(self, classes: list, hop_size: int = 512, sampling_rate: int = 22050):
@@ -18,24 +16,19 @@ class Plotter:
         # access pyplot only by one thread at a time
         self.semaphore = threading.Semaphore(value=1)
 
-    def plot(self, targets: np.ndarray, predictions: np.ndarray, path: str, identifier,
-             post_process=False, to_seconds=False) -> None:
+    def plot(self, targets: np.ndarray, predictions: np.ndarray, path: str, identifier, to_seconds=False) -> None:
         print('plotting results...')
         # start plotting in background
         threading.Thread(target=self.plot_thread,
-                         args=(targets, predictions, path, identifier, post_process, to_seconds)).start()
+                         args=(targets, predictions, path, identifier, to_seconds)).start()
 
     def plot_thread(self, targets: np.ndarray, predictions: np.ndarray, path: str, identifier,
-                    post_process: bool, to_seconds: bool) -> None:
+                    to_seconds: bool) -> None:
         # aquire access to pyplot
         self.semaphore.acquire(blocking=True)
         os.makedirs(path, exist_ok=True)
         # compute errors
         thresh_predictions = np.where(predictions >= self.threshold, 1, 0)
-        if post_process:
-            # thresh_predictions = util.median_filter_predictions(thresh_predictions, frame_size=10)
-            thresh_predictions = util.post_process_predictions(thresh_predictions)
-            thresh_predictions = util.remove_events_if_background(thresh_predictions)
         errors = thresh_predictions != targets
         # create subplots for targets, predictions and errors
         to_plot = [targets, thresh_predictions, errors]
@@ -85,4 +78,5 @@ if __name__ == '__main__':
     test_update = 1
     plotter = Plotter(test_classes, 512, 22050)
     plotter.plot(test_targets, test_predictions, test_path, test_update)
-    plotter.plot(test_targets, test_predictions, test_path, test_update + 1, post_process=True)
+    import postproc
+    plotter.plot(test_targets, postproc.post_process_predictions(test_predictions), test_path, test_update + 1)

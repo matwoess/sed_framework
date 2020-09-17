@@ -4,7 +4,6 @@ from typing import List
 
 import numpy as np
 
-import util
 from dcase16_evaluation import DCASE2016_EventDetection_SegmentBasedMetrics, DCASE2016_EventDetection_EventBasedMetrics
 
 
@@ -32,14 +31,9 @@ def get_event_list(batch: np.ndarray, classes: list, time_factor=512 / 22050) ->
     return event_list
 
 
-def compute_dcase_metrics(targets: List[np.ndarray], predictions: List[np.ndarray], classes: list,
-                          post_process=False) -> dict:
+def compute_dcase_metrics(targets: List[np.ndarray], predictions: List[np.ndarray], classes: list) -> dict:
     threshold = 0.5
     predictions = [np.where(prediction >= threshold, 1, 0) for prediction in predictions]
-    if post_process:
-        # predictions = [util.median_filter_predictions(prediction, frame_size=10) for prediction in predictions]
-        predictions = [util.post_process_predictions(prediction) for prediction in predictions]
-        predictions = [util.remove_events_if_background(prediction) for prediction in predictions]
     # create metric classes and get lists
     metric_classes = [cls for cls in classes if cls != 'background']
     dcase2016_segment_based = DCASE2016_EventDetection_SegmentBasedMetrics(class_list=metric_classes)
@@ -108,3 +102,20 @@ def write_dcase_metrics_to_file(metrics: dict, folder, file) -> None:
         print(get_dict_string(metrics['segment_based']), file=f)
         print(f"=== DCASE2016 - event based ===\n", file=f)
         print(get_dict_string(metrics['event_based']), file=f)
+
+
+if __name__ == '__main__':
+    np.random.seed(1)
+    test_excerpt_length = 32
+    test_targets = np.where(np.random.rand(16, 3, test_excerpt_length) >= 0.8, 1, 0)
+    test_predictions = np.where(np.random.rand(16, 3, test_excerpt_length) >= 0.9, 1, 0)
+    test_classes = ["bird singing", "children shouting", "wind blowing"]
+    test_path = 'results/metrics'
+    test_update = 1
+    test_metrics = compute_dcase_metrics([test_targets], [test_predictions], test_classes)
+    write_dcase_metrics_to_file(test_metrics, os.path.join('results', 'metrics'), 'test')
+    test_predictions = np.where(np.random.rand(16, 3, test_excerpt_length) >= 0.99, 1, 0)
+    test_metrics2 = compute_dcase_metrics([test_targets], [test_predictions], test_classes)
+    test_metrics_list = [test_metrics, test_metrics, test_metrics2]
+    test_metrics = calc_avg_metrics(test_metrics_list)
+    write_dcase_metrics_to_file(test_metrics, os.path.join('results', 'metrics'), 'test_avg')

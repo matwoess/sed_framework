@@ -15,7 +15,7 @@ def apply_random_stretching(spectrogram: np.ndarray, factor: float = 0.3) -> np.
     return spectrogram
 
 
-def apply_random_noise(spectrogram: np.ndarray, mean: float = 0.0, var: float = 1.0) -> np.ndarray:
+def apply_random_noise(spectrogram: np.ndarray, mean: float = 0.0, var: float = 0.1) -> np.ndarray:
     noise = np.random.normal(mean, var, spectrogram.shape)
     spectrogram += noise
     return spectrogram
