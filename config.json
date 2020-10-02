@@ -1,5 +1,4 @@
 {
-  "device": "cpu",
   "hyper_params": {
     "excerpt_size": 384,
     "batch_size": 16,

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import random
+import shutil
 from datetime import datetime
 from typing import Tuple, Iterator
 
@@ -28,8 +29,8 @@ np.random.seed(0)
 
 def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, classes: list, update: int,
                    device: torch.device, plotter: Plotter, loss_fn=torch.nn.BCELoss()) -> Tuple[Tensor, dict, dict]:
-    plots_path = os.path.join('results', 'itermediate', 'plots')
-    metrics_path = os.path.join('results', 'itermediate', 'metrics')
+    plots_path = os.path.join('results', 'intermediate', 'plots')
+    metrics_path = os.path.join('results', 'intermediate', 'metrics')
     os.makedirs(plots_path, exist_ok=True)
     os.makedirs(metrics_path, exist_ok=True)
 
@@ -72,6 +73,7 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
     os.makedirs('results', exist_ok=True)
     experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f' - {feature_type} - {scene}'
     writer = SummaryWriter(log_dir=os.path.join('tensorboard', experiment_id))
+    shutil.copyfile('config.json', os.path.join('results', 'config.json'))  # save current config file to results
     training_dataset = BaseDataset(feature_type, scene, hyper_params, fft_params)
     # create network
     classes = util.get_scene_classes(scene)
