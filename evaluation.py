@@ -124,6 +124,7 @@ class Evaluator:
                     curr_file = audio_file
                     file_targets.clear()
                     file_predictions.clear()
+                    file_pp_predictions.clear()
 
                 inputs = inputs.to(self.device, dtype=torch.float32)
                 targets = targets.to(self.device, dtype=torch.float32)
