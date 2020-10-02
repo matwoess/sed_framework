@@ -13,7 +13,7 @@ class Squeeze(torch.nn.Module):
 class SimpleCNN(torch.nn.Module):
     def __init__(self, in_channels: int = 1, n_kernels: int = 16, n_features: int = 128, out_features: int = 18,
                  p_dropout: float = 0.3):
-        """Simple CNN"""
+        """Simple CNN architecture"""
         super(SimpleCNN, self).__init__()
         self.out_features = out_features
 

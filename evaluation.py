@@ -16,6 +16,11 @@ from plot import Plotter
 
 
 class Evaluator:
+    """
+    Evaluator class, created to bundle all evaluation and helper functions into a single class.
+    Reduces parameter count by storing important values as class variables.
+    """
+
     def __init__(self, feature_type: str, scene: str, hyper_params: dict, network_params: dict, fft_params: dict,
                  model_path: str, device: torch.device, writer: SummaryWriter, plotter: Plotter):
         self.feature_type = feature_type
@@ -31,6 +36,7 @@ class Evaluator:
         self.net = torch.load(model_path, map_location='cpu').to(device)
 
     def evaluate(self) -> None:
+        # create datasets and loaders
         dev_dataset = BaseDataset(self.feature_type, self.scene, self.hyper_params, self.fft_params)
         eval_dataset = BaseDataset(self.feature_type, self.scene, self.hyper_params, self.fft_params,
                                    data_path=os.path.join('data', 'eval'))
@@ -41,6 +47,7 @@ class Evaluator:
         dev_loader = DataLoader(dev_set, batch_size=1, shuffle=False, num_workers=0)
         eval_loader = DataLoader(eval_set, batch_size=1, shuffle=False, num_workers=0)
 
+        # evaluate on all individual files for both dev and eval set
         eval_loss, metrics_eval, metrics_pp_eval = self.evaluate_model_on_files(eval_loader)
         dev_loss, metrics_dev, metrics_pp_dev = self.evaluate_model_on_files(dev_loader)
 
@@ -70,6 +77,7 @@ class Evaluator:
         metric.write_dcase_metrics_to_file(metrics_pp_dev, metrics_pp_path, 'dev_average')
 
     def log_params(self, metrics_eval, metrics_pp_eval):
+        # combine parameter dictionaries into a single one
         all_params = {}
         for key in self.hyper_params.keys():
             all_params[key] = self.hyper_params[key]
@@ -77,6 +85,7 @@ class Evaluator:
             all_params[key] = self.network_params[key]
         for key in self.fft_params.keys():
             all_params[key] = self.fft_params[key]
+        # flatten metric dictionary and filter out important metrics
         flat_results = util.flatten_dict(metrics_eval, 'final_metric')
         flat_results_pp = util.flatten_dict(metrics_pp_eval, 'final_metric_pp')
         filtered_results = metric.filter_metrics_dict(flat_results)
@@ -88,7 +97,7 @@ class Evaluator:
         return filtered_results
 
     def evaluate_model_on_files(self, dataloader: torch.utils.data.DataLoader) -> Tuple[torch.Tensor, dict, dict]:
-        plot_per_file = True
+        plot_per_file = True  # set to False to significantly reduce evaluation time
         plot_path = os.path.join('results', 'final', 'plots')
         metrics_path = os.path.join('results', 'final', 'metrics')
         plot_pp_path = os.path.join('results', 'final_pp', 'plots')
@@ -98,12 +107,13 @@ class Evaluator:
         all_targets, all_predictions, all_pp_predictions = [], [], []
         curr_file = None
         with torch.no_grad():
+            # loop over all excerpts
             for data in tqdm(dataloader, desc='evaluating', position=0):
                 inputs, targets, audio_file, idx = data
                 audio_file = audio_file[0]
                 if curr_file is None:
                     curr_file = audio_file
-                elif audio_file != curr_file:
+                elif audio_file != curr_file:  # if filename changes:
                     # combine all targets and predictions from current file
                     concat_targets = np.concatenate(file_targets, axis=2)
                     concat_predictions = np.concatenate(file_predictions, axis=2)
@@ -111,7 +121,7 @@ class Evaluator:
                     all_targets.append(concat_targets)
                     all_predictions.append(concat_predictions)
                     all_pp_predictions.append(concat_pp_predictions)
-                    # plot and compute metrics
+                    # plot and compute metrics for current file
                     filename = os.path.split(curr_file)[-1]
                     if plot_per_file:
                         self.plotter.plot(concat_targets, concat_predictions, plot_path, filename, True)
@@ -129,13 +139,14 @@ class Evaluator:
                 inputs = inputs.to(self.device, dtype=torch.float32)
                 targets = targets.to(self.device, dtype=torch.float32)
                 predictions = self.net(inputs)
+                # accumulate data
                 loss += self.loss_fn(predictions, targets)
                 file_targets.append(targets.detach().cpu().numpy())
                 detach_predictions = predictions.detach().cpu().numpy()
                 file_predictions.append(detach_predictions)
                 file_pp_predictions.append(postproc.post_process_predictions(detach_predictions))
             loss /= len(dataloader)
-
+            # compute final metrics for all prediction on all files
             metrics = metric.compute_dcase_metrics(all_targets, all_predictions, self.classes)
             metrics_pp = metric.compute_dcase_metrics(all_targets, [postproc.post_process_predictions(pred) for pred in
                                                                     all_predictions], self.classes)

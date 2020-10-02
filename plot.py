@@ -7,6 +7,11 @@ from matplotlib import pyplot as plt
 
 
 class Plotter:
+    """
+    Plotter class, plotting targets predictions and differences/error.
+    plotting happens in a background thread for not stalling the main thread.
+    Only one thread at a time gets access to pyplot to avoid state-machine errors.
+    """
     def __init__(self, classes: list, hop_size: int = 512, sampling_rate: int = 22050):
         self.classes = classes
         self.threshold = 0.5
@@ -24,7 +29,7 @@ class Plotter:
 
     def plot_thread(self, targets: np.ndarray, predictions: np.ndarray, path: str, identifier,
                     to_seconds: bool) -> None:
-        # aquire access to pyplot
+        # acquire access to pyplot
         self.semaphore.acquire(blocking=True)
         os.makedirs(path, exist_ok=True)
         # compute errors

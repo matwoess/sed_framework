@@ -29,6 +29,9 @@ np.random.seed(0)
 
 def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader, classes: list, update: int,
                    device: torch.device, plotter: Plotter, loss_fn=torch.nn.BCELoss()) -> Tuple[Tensor, dict, dict]:
+    """
+    Validate current model on validation set and return loss and metrics
+    """
     plots_path = os.path.join('results', 'intermediate', 'plots')
     metrics_path = os.path.join('results', 'intermediate', 'metrics')
     os.makedirs(plots_path, exist_ok=True)
@@ -38,6 +41,7 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
     with torch.no_grad():
         target_list = []
         prediction_list = []
+        # calculate targets and predictions on validation set
         for data in tqdm.tqdm(dataloader, desc='scoring', position=0):
             inputs, targets, _, idx = data
             inputs = inputs.to(device, dtype=torch.float32)
@@ -50,7 +54,7 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
             target_list.extend([*target_array])
             prediction_list.extend([*prediction_array])
         loss /= len(dataloader)
-        # pick some excerpts and plot them
+        # pick some random excerpts and plot them
         num_plots = 4
         indices = random.choices(np.arange(len(target_list)), k=num_plots)
         targets = np.stack([t for i, t in enumerate(target_list) if i in indices])
@@ -68,7 +72,9 @@ def validate_model(net: torch.nn.Module, dataloader: torch.utils.data.DataLoader
 
 def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, network_config: dict, eval_settings: dict,
          fft_params: dict) -> None:
-    """Main function that takes hyperparameters, creates the architecture, trains the model and evaluates it"""
+    """
+    Main function that takes hyper-parameters, creates the architecture, trains the model and evaluates it
+    """
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     os.makedirs('results', exist_ok=True)
     experiment_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f' - {feature_type} - {scene}'
@@ -78,6 +84,7 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
     # create network
     classes = util.get_scene_classes(scene)
     plotter = Plotter(classes, hop_size=fft_params['hop_size'], sampling_rate=22050)
+    # finalize network config parameters
     network_config['out_features'] = len(classes)
     if feature_type == 'spec':
         network_config['n_features'] = fft_params['hop_size'] + 1
@@ -85,18 +92,19 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
         network_config['n_features'] = fft_params['n_mfcc']
     elif feature_type == 'mels':
         network_config['n_features'] = fft_params['n_mels']
+    # create network
     net = SimpleCNN(**network_config)
     # Save initial model as "best" model (will be overwritten later)
     model_path = os.path.join('results', f'best_{feature_type}_{scene}_model.pt')
     if not os.path.exists(model_path):
         torch.save(net, model_path)
-    else:  # if there already exists a model load parameters
+    else:  # if there already exists a model, just load parameters
         print(f'reusing pre-trained model: "{model_path}"')
         net = torch.load(model_path, map_location=torch.device('cpu'))
     net.to(device)
-    # Get loss function
+    # get loss function
     loss_fn = torch.nn.BCELoss()
-    # Get adam optimizer
+    # create adam optimizer
     optimizer = torch.optim.Adam(net.parameters(), lr=hyper_params['learning_rate'],
                                  weight_decay=hyper_params['weight_decay'])
 
@@ -106,8 +114,9 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
     progress_bar = tqdm.tqdm(total=hyper_params['n_updates'], desc=f"loss: {np.nan:7.5f}", position=0)
     update = 0  # current update counter
 
-    fold_idx = 1
+    fold_idx = 1  # one random fold (defines split into training and validation set)
     rnd_augment = hyper_params['rnd_augment']
+    # create subsets and data loaders
     if eval_mode:
         train_subset = training_dataset
         val_loader = None
@@ -123,8 +132,10 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
     train_loader = DataLoader(train_set, batch_size=hyper_params['batch_size'], shuffle=True, num_workers=0)
 
     n_updates = hyper_params['n_updates']
+    # main training loop
     while update <= n_updates:
         if rnd_augment and update > 0:
+            # regenerate new excerpts (in background) but use current ones for training
             train_set.generate_excerpts()
         for data in train_loader:
             inputs, targets, audio_file, idx = data
@@ -141,7 +152,7 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
                 writer.add_scalar(tag="training/loss", scalar_value=loss.cpu(), global_step=update)
 
             if not eval_mode and update % validate_at == 0 and update > 0:
-                # Evaluate model on validation set (after every complete training fold)
+                # evaluate model on validation set, log parameters and metrics
                 val_loss, metrics, metrics_pp = validate_model(net, val_loader, classes, update, device, plotter)
                 print(f'val_loss: {val_loss}')
                 f_score = metrics['segment_based']['overall']['F']
@@ -161,6 +172,7 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
                     torch.save(net, model_path)
 
             if eval_mode:
+                # in eval mode, just compare train_loss
                 train_loss = loss.cpu()
                 if train_loss < best_loss:
                     print(f'{train_loss} < {best_loss}... saving as new {os.path.split(model_path)[-1]}')
@@ -187,6 +199,9 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
 
 def log_validation_params(writer: SummaryWriter, val_loss: Tensor, params: Iterator[Parameter],
                           metrics: dict, metrics_pp: dict, update: int) -> None:
+    """
+    Write validation loss, parameters, gradients and metrics to tensorboard
+    """
     writer.add_scalar(tag="validation/loss", scalar_value=val_loss, global_step=update)
     # Add weights to tensorboard
     for i, param in enumerate(params):
