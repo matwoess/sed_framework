@@ -195,8 +195,15 @@ class BaseDataset(Dataset):
         if len(self.datasets) > 1:
             all_targets = np.zeros(shape=(len(self.classes), target.shape[1]))
             datasets_before = self.datasets[:i]
-            pad_indices = np.sum([len(d.classes) for d in datasets_before], dtype=int)
-            all_targets[pad_indices:(pad_indices + target.shape[0])] = target
+            # -1 because of 'background' class
+            pad_indices = np.sum([len(d.classes) - 1 for d in datasets_before], dtype=int)
+            end_idx = pad_indices + target.shape[0] - 1
+            end_idx_all_targets = all_targets.shape[0] - 1
+            all_targets[pad_indices:end_idx + 1] = target
+            if end_idx != end_idx_all_targets:
+                # move 'background' to last position in all_targets
+                all_targets[end_idx_all_targets] = all_targets[end_idx]
+                all_targets[end_idx] = 0
             target = all_targets
         return feature, target, sr, audio_file, dataset_idx
 
