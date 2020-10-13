@@ -87,7 +87,7 @@ def main(eval_mode: bool, feature_type: str, scene: str, hyper_params: dict, net
     # finalize network config parameters
     network_config['out_features'] = len(classes)
     if feature_type == 'spec':
-        network_config['n_features'] = fft_params['hop_size'] + 1
+        network_config['n_features'] = fft_params['n_fft'] // 2 + 1
     elif feature_type == 'mfcc':
         network_config['n_features'] = fft_params['n_mfcc']
     elif feature_type == 'mels':

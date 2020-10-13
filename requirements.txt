@@ -1,9 +1,9 @@
 librosa==0.8.0
-numpy==1.19.1
+numpy==1.19.2
 torch==1.6.0
-tqdm==4.48.2
+tqdm==4.50.2
 
-matplotlib~=3.3.1
+matplotlib~=3.3.2
 dill~=0.3.2
 requests~=2.24.0
 scipy~=1.5.2
