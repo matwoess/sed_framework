@@ -143,3 +143,15 @@ The `tensorboard` python module was used to tune the parameters.
 Losses, gradients, and metrics during training are logged in tensorboard, combined with the hyper-parameters used.  
 This allowed to visualize the effects of different parameter values in combination with the resulting score.  
 Using the "parallel coordinates view", I was able to manually inspect the result of different parameter combinations and optimize their performance.  
+
+### Libraries
+
+Important python packages and libraries include:
+- `numpy`
+- `librosa`
+- `torch` (PyTorch)
+- `scipy`
+- `matplotlib`
+- `tqdm`
+- `requests`
+- `dill`
