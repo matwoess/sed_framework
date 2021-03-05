@@ -1,6 +1,6 @@
 # Sound Event Detection Framework
 
-This project was developed in the context of my [bachelor thesis](docs/Thesis.pdf) at JKU - Johannes Kepler Universität Linz.
+This project was developed in the context of my bachelor thesis at JKU - Johannes Kepler Universität Linz.
 
 ### Purpose
 The framework detects sound events in polyphonic audio files using a neural network (CNN+FNN) trained with supervised learing.  
