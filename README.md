@@ -15,7 +15,7 @@ In monophonic audio (only one event active at a time) we can simply train a netw
 In polyphonic sound event detection, multiple events can be active at the same time. That's why, at each frame position, we need a binary value for each event class.
 This is visualized in the figure below:  
 
-<img src="docs/mono_vs_poly_sed.png" alt="monophonic vs. polyphonic" width="500"/>
+<img src="resources/mono_vs_poly_sed.png" alt="monophonic vs. polyphonic" width="500"/>
 
 As a consequence the sound data of multiple events can overlap, creating a new kind of event (mixture) which can be hard to match/compare with "known sound class patterns".  
 
@@ -52,7 +52,7 @@ Multi-scene trains on both (all) scenes of the dataset and predicts all event ty
 
 The differnce is show in the below graphic:
 
-<img src="docs/multi_single_class.png" alt="differnce between multi-class and single-class classification" width="500"/>
+<img src="resources/multi_single_class.png" alt="differnce between multi-class and single-class classification" width="500"/>
 
 ### Usage:
 The framework is called by invoking python on the `main.py` file.   
@@ -89,7 +89,7 @@ During training, at each validation step, intermediate metrics and plots are gen
 The figure below shows an example plot of an excerpt of a residential area recording with a length of 512 frames, 
 illustrating the targets gathered from provided annotations, the network predictions, and the error resulting from taking the difference of both.
 
-<img src="docs/example_plot.png" alt="an example plot showing targets, predictions and error" width="500"/>
+<img src="resources/example_plot.png" alt="an example plot showing targets, predictions and error" width="500"/>
 
 After training is finished, the final evaluation is initiated.  
 All data from the development set and evaluation set are fed to the network.  
@@ -100,7 +100,7 @@ The results are stored on disk and automatically zipped after each run.
 #### Architecture
 The architecture of the default network is shown below:  
 
-<img src="docs/architecture.png" alt="the network architecture" width="500"/>
+<img src="resources/architecture.png" alt="the network architecture" width="500"/>
 
 The input of our network has a size of (B, 1, F, T). 
 - B stands for the batch size, meaning how many samples are fed to the network at the same time.  
